@@ -1,0 +1,12 @@
+{
+  "model": "Qwen/Qwen2.5-3B",
+  "dataset": "FudanSELab/ClassEval",
+  "split": "test",
+  "evaluated": 1,
+  "passed": 0,
+  "pass@1": 0.0,
+  "selected_task_ids": [
+    9
+  ],
+  "missing_task_ids": null
+}
