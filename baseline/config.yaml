@@ -21,7 +21,8 @@ data:
   # Optional list of tasks to evaluate. Accepts either real task_ids
   # (e.g., "ClassEval_9") or numeric indices (e.g., 9). Numeric IDs
   # will be resolved to "ClassEval_<n>" or dataset index fallback.
-  task_ids: ["ClassEval_9"]
+  # task_ids: ["ClassEval_9"]
+  task_ids: []
 
 eval:
   timeout_seconds: 30   # per-sample unit test timeout

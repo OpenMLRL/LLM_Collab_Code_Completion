@@ -290,7 +290,7 @@ def write_combined_code(out_code_path: str, code: str, test_code: str) -> None:
         f.write(combined)
 
 
-def run_unittests_in_subprocess(py_file: str, timeout: int) -> Dict[str, Any]:
+def run_unittests_in_subprocess(py_file: str, timeout: int, work_dir: Optional[str] = None) -> Dict[str, Any]:
     """Run unittests from a module file in a sandboxed subprocess with timeout.
 
     The subprocess imports the module, discovers tests via unittest loader,
@@ -342,6 +342,7 @@ except Exception as e:
             text=True,
             timeout=timeout,
             check=False,
+            cwd=work_dir if work_dir else None,
         )
     except subprocess.TimeoutExpired:
         return {
@@ -527,8 +528,19 @@ def main():
             print(f"Failed to write combined code for {task_id}: {e}", file=sys.stderr)
             continue
 
-        # Run unit tests with timeout
-        res = run_unittests_in_subprocess(out_file, timeout=eval_cfg.timeout_seconds)
+        # Prepare per-task sandbox working directory to contain side effects
+        sandboxes_dir = os.path.join(output_dir, "sandboxes")
+        ensure_dir(sandboxes_dir)
+        work_dir = os.path.join(sandboxes_dir, task_id)
+        ensure_dir(work_dir)
+
+        # Run unit tests with timeout in sandbox; use absolute code path
+        abs_out_file = os.path.abspath(out_file)
+        res = run_unittests_in_subprocess(
+            abs_out_file,
+            timeout=eval_cfg.timeout_seconds,
+            work_dir=work_dir,
+        )
         res.update({
             "task_id": task_id,
             "code_path": os.path.relpath(out_file),
