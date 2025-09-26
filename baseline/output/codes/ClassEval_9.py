@@ -15,30 +15,30 @@ class BigNumCalculator:
         '111111111011111111100'
 
         """
-        # Convert strings to lists of integers
+        # Convert strings to lists of digits
         num1_list = [int(digit) for digit in num1]
         num2_list = [int(digit) for digit in num2]
 
         # Pad the shorter list with zeros
-        max_length = max(len(num1_list), len(num2_list))
-        num1_list += [0] * (max_length - len(num1_list))
-        num2_list += [0] * (max_length - len(num2_list))
+        max_len = max(len(num1_list), len(num2_list))
+        num1_list += [0] * (max_len - len(num1_list))
+        num2_list += [0] * (max_len - len(num2_list))
 
         # Initialize the result list
         result = []
 
         # Perform addition
         carry = 0
-        for i in range(max_length - 1, -1, -1):
-            sum_digits = num1_list[i] + num2_list[i] + carry
-            result.append(sum_digits % 10)
-            carry = sum_digits // 10
+        for i in range(max_len - 1, -1, -1):
+            digit_sum = num1_list[i] + num2_list[i] + carry
+            result.append(digit_sum % 10)
+            carry = digit_sum // 10
 
         # Add any remaining carry
         if carry:
             result.append(carry)
 
-        # Convert the result list back to a string
+        # Convert the result list to a string
         return ''.join(str(digit) for digit in result[::-1])
 
     @staticmethod
@@ -53,34 +53,34 @@ class BigNumCalculator:
         '-86419753208641975320'
 
         """
-        # Convert strings to lists of integers
+        # Convert strings to lists of digits
         num1_list = [int(digit) for digit in num1]
         num2_list = [int(digit) for digit in num2]
 
         # Pad the shorter list with zeros
-        max_length = max(len(num1_list), len(num2_list))
-        num1_list += [0] * (max_length - len(num1_list))
-        num2_list += [0] * (max_length - len(num2_list))
+        max_len = max(len(num1_list), len(num2_list))
+        num1_list += [0] * (max_len - len(num1_list))
+        num2_list += [0] * (max_len - len(num2_list))
 
         # Initialize the result list
         result = []
 
         # Perform subtraction
         carry = 0
-        for i in range(max_length - 1, -1, -1):
-            diff_digits = num1_list[i] - num2_list[i] - carry
-            if diff_digits < 0:
-                diff_digits += 10
+        for i in range(max_len - 1, -1, -1):
+            digit_diff = num1_list[i] - num2_list[i] - carry
+            if digit_diff < 0:
+                digit_diff += 10
                 carry = 1
             else:
                 carry = 0
-            result.append(diff_digits)
+            result.append(digit_diff)
 
         # Remove leading zeros
         while result and result[0] == 0:
             result.pop(0)
 
-        # Convert the result list back to a string
+        # Convert the result list to a string
         return ''.join(str(digit) for digit in result[::-1])
 
     @staticmethod
@@ -95,7 +95,7 @@ class BigNumCalculator:
         '1219326311370217952237463801111263526900'
 
         """
-        # Convert strings to lists of integers
+        # Convert strings to lists of digits
         num1_list = [int(digit) for digit in num1]
         num2_list = [int(digit) for digit in num2]
 
@@ -107,18 +107,18 @@ class BigNumCalculator:
             for j in range(len(num2_list)):
                 result[i + j] += num1_list[i] * num2_list[j]
 
-        # Perform addition to handle carry
+        # Perform carry propagation
         carry = 0
-        for i in range(len(result)):
-            result[i] += carry
-            carry = result[i] // 10
-            result[i] %= 10
+        for i in range(len(result) - 1, -1, -1):
+            digit_sum = result[i] + carry
+            result[i] = digit_sum % 10
+            carry = digit_sum // 10
 
         # Remove leading zeros
         while result and result[0] == 0:
             result.pop(0)
 
-        # Convert the result list back to a string
+        # Convert the result list to a string
         return ''.join(str(digit) for digit in result[::-1])
 
 import unittest

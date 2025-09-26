@@ -140,11 +140,11 @@ def build_prompt(skeleton: str) -> str:
         You are a Python coding assistant.
 
         Task: Complete the following Python skeleton so that it fully implements the described behavior.
-        Only fill in or add executable Python code that makes the implementation correct. Do not include any test code.
+        Only fill in or add executable Python code that makes the implementation correct.
 
         Output constraints (must follow exactly):
         - You must only generate pure Python code without any other words (your output must be executable Python code).
-        - Do NOT include markdown code blocks (```python)
+        - Please place the code within the code block. (```python)
         - Do NOT include any text before or after the code (no explanations, no comments outside the code).
         - Do NOT include print statements unless required by the skeleton's behavior.
         - Do NOT remove or alter the given imports unless necessary.
@@ -264,46 +264,22 @@ class LMGenerator:
 
 
 def extract_pure_python(text: str) -> str:
-    """Post-process model output to enforce pure Python code.
-
-    - Remove markdown-style code fences if present.
-    - Strip any leading/trailing non-code commentary if fences are present.
-    - Otherwise, return the raw text stripped.
-    """
-    s = text.strip()
-    # Normalize potential Windows newlines
-    s = s.replace("\r\n", "\n")
-
-    if "```" in s:
-        # Extract content within the outermost triple backticks
-        parts = re.split(r"```+", s)
-        # parts may look like: ['', 'python', 'code', ''] or ['', 'code', '']
-        extracted = None
-        for i in range(len(parts) - 1):
-            body = parts[i + 1]
-            # Skip a 'python' language tag line if present
-            if body.lstrip().lower().startswith("python\n"):
-                body = body.split("\n", 1)[1] if "\n" in body else ""
-            if body.strip():
-                extracted = body
-                break
-        if extracted is None:
-            extracted = s
-        s = extracted
-
-    # Strip any leading explanatory lines that start with common phrases
-    # but keep this conservative to avoid trimming valid code.
-    leading_noise_patterns = [
-        r"^Here is the",
-        r"^The solution",
-        r"^Answer:",
-        r"^Implementation:",
-    ]
-    lines = s.split("\n")
-    while lines and any(re.match(p, lines[0], flags=re.IGNORECASE) for p in leading_noise_patterns):
-        lines.pop(0)
-    s = "\n".join(lines).strip()
-
+    """Simplified: return the first fenced code block if present; else trimmed text."""
+    s = (text or "").replace("\r\n", "\n").strip()
+    fence = "```"
+    if fence in s:
+        start = s.find(fence)
+        if start != -1:
+            start += len(fence)
+            # Skip optional language identifier on the same line
+            nl = s.find("\n", start)
+            if nl == -1:
+                return ""  # nothing after opening fence
+            body_start = nl + 1
+            end = s.find(fence, body_start)
+            if end != -1:
+                return s[body_start:end].strip()
+            return s[body_start:].strip()
     return s
 
 
