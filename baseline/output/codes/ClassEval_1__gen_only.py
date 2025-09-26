@@ -5,7 +5,6 @@ class AreaCalculator:
     This is a class for calculating the area of different shapes, including circle, sphere, cylinder, sector and annulus.
     """
 
-
     def __init__(self, radius):
         """
         Initialize the radius for shapes.
@@ -53,7 +52,7 @@ class AreaCalculator:
         >>> areaCalculator.calculate_sector_area(math.pi)
         6.283185307179586
         """
-        return 0.5 * math.pi * self.radius ** 2 * (angle / (2 * math.pi))
+        return (angle / (2 * math.pi)) * math.pi * self.radius ** 2
 
     def calculate_annulus_area(self, inner_radius, outer_radius):
         """

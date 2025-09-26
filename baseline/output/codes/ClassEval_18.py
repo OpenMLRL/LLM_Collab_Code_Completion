@@ -82,7 +82,7 @@ class CamelCaseMap:
         >>> camelize_map._convert_key('first_name')
         'firstName'
         """
-        return key.replace('_', ' ').title().replace(' ', '')
+        return key[0].upper() + key[1:]
 
     @staticmethod
     def _to_camel_case(key):
@@ -94,7 +94,7 @@ class CamelCaseMap:
         >>> camelize_map._to_camel_case('first_name')
         'firstName'
         """
-        return key.replace('_', ' ').title().replace(' ', '')
+        return key[0].upper() + key[1:]
 
 import unittest
 

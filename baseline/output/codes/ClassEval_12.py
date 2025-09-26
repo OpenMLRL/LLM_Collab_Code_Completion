@@ -30,7 +30,7 @@ class BlackjackGame:
         """
         suits = ['S', 'H', 'D', 'C']
         ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
-        deck = [rank + suit for rank in ranks for suit in suits]
+        deck = [rank + suit for suit in suits for rank in ranks]
         return deck
 
     def calculate_hand_value(self, hand):
@@ -42,6 +42,7 @@ class BlackjackGame:
         until the hand value is less than or equal to 21, or all Aces have been counted as value of 1.
         :param hand: list
         :return: the value of the poker cards stored in hand list, a number.
+        >>> black_jack_game = BlackjackGame()
         >>> black_jack_game.calculate_hand_value(['QD', '9D', 'JC', 'QH', 'AS'])
         40
         """
@@ -69,6 +70,7 @@ class BlackjackGame:
         :param player_hand: list
         :param dealer_hand: list
         :return: the result of the game, only two certain str: 'Dealer wins' or 'Player wins'
+        >>> black_jack_game = BlackjackGame()
         >>> black_jack_game.check_winner(['QD', '9D', 'JC', 'QH', 'AS'], ['QD', '9D', 'JC', 'QH', '2S'])
         'Player wins'
         """

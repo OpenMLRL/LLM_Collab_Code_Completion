@@ -28,8 +28,6 @@ class CurrencyConverter:
         >>> cc.convert(64, 'CNY','USD')
         10.0
         """
-        if from_currency not in self.rates or to_currency not in self.rates:
-            raise ValueError("Invalid currency type")
         return amount * self.rates[to_currency] / self.rates[from_currency]
 
     def get_supported_currencies(self):
@@ -55,7 +53,7 @@ class CurrencyConverter:
         if currency in self.rates:
             return False
         self.rates[currency] = rate
-        return True
+        return None
 
     def update_currency_rate(self, currency, new_rate):
         """
@@ -70,7 +68,7 @@ class CurrencyConverter:
         if currency not in self.rates:
             return False
         self.rates[currency] = new_rate
-        return True
+        return None
 
 import unittest
 

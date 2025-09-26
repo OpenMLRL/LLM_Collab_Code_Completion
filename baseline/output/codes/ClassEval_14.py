@@ -37,8 +37,8 @@ class BookManagementDB:
         :param author: str, author name
         """
         self.cursor.execute('''
-            INSERT INTO books (title, author, availability) VALUES (?, ?, 1)
-        ''', (title, author))
+            INSERT INTO books (title, author, availability) VALUES (?, ?, ?)
+        ''', (title, author, 1))
         self.connection.commit()
 
     def remove_book(self, book_id):

@@ -35,4 +35,4 @@ class BinaryDataProcessor:
         """
         Convert the binary string to utf-8 string.
         """
-        return ''.join([chr(int(self.binary_string[i:i+16], 2)) for i in range(0, len(self.binary_string), 16)])
+        return ''.join([chr(int(self.binary_string[i:i+8], 2)) for i in range(0, len(self.binary_string), 8)])

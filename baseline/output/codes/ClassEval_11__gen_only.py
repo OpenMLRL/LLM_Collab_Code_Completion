@@ -15,12 +15,8 @@ class BitStatusUtil:
         6
 
         """
-        if not isinstance(states, int) or not isinstance(stat, int):
-            raise TypeError("Both states and stat must be integers.")
-        if stat < 0:
-            raise ValueError("Stat must be non-negative.")
-        if stat % 2 != 0:
-            raise ValueError("Stat must be even.")
+        if stat < 0 or stat % 2 != 0:
+            raise ValueError("Stat must be non-negative and even")
         return states | stat
 
     @staticmethod
@@ -35,12 +31,8 @@ class BitStatusUtil:
         True
 
         """
-        if not isinstance(states, int) or not isinstance(stat, int):
-            raise TypeError("Both states and stat must be integers.")
-        if stat < 0:
-            raise ValueError("Stat must be non-negative.")
-        if stat % 2 != 0:
-            raise ValueError("Stat must be even.")
+        if stat < 0 or stat % 2 != 0:
+            raise ValueError("Stat must be non-negative and even")
         return bool(states & stat)
 
     @staticmethod
@@ -55,12 +47,8 @@ class BitStatusUtil:
         4
 
         """
-        if not isinstance(states, int) or not isinstance(stat, int):
-            raise TypeError("Both states and stat must be integers.")
-        if stat < 0:
-            raise ValueError("Stat must be non-negative.")
-        if stat % 2 != 0:
-            raise ValueError("Stat must be even.")
+        if stat < 0 or stat % 2 != 0:
+            raise ValueError("Stat must be non-negative and even")
         return states & ~stat
 
     @staticmethod
@@ -75,9 +63,6 @@ class BitStatusUtil:
         ...
         ValueError: 3 not even
         """
-        if not all(isinstance(arg, int) for arg in args):
-            raise TypeError("All elements in args must be integers.")
-        if any(arg < 0 for arg in args):
-            raise ValueError("All elements in args must be non-negative.")
-        if any(arg % 2 != 0 for arg in args):
-            raise ValueError("All elements in args must be even.")
+        for arg in args:
+            if arg < 0 or arg % 2 != 0:
+                raise ValueError(f"Arg {arg} not even")

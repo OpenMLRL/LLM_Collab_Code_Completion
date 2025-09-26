@@ -13,7 +13,7 @@ LIMIT_ARG="${LIMIT_OVERRIDE:-}"
 cd "${REPO_DIR}"
 source $(conda info --base)/etc/profile.d/conda.sh || true
 source ~/.bashrc || true
-conda activate comlrl || { echo "[ERROR] conda env 'comlrl' 未找到"; exit 1; }
+conda activate comlrl || { echo "[ERROR] conda env 'comlrl' not found"; exit 1; }
 
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 python3 -u "${MAIN_REL}" --config "${CONFIG_REL}" ${LIMIT_ARG:+--limit ${LIMIT_ARG}}

@@ -21,8 +21,7 @@ class DocFileHandler:
         :return: str, the content of the Word document.
         """
         doc = Document(self.file_path)
-        text = '\n'.join([paragraph.text for paragraph in doc.paragraphs])
-        return text
+        return '\n'.join([para.text for para in doc.paragraphs])
 
     def write_text(self, content, font_size=12, alignment='left'):
         """
@@ -35,7 +34,8 @@ class DocFileHandler:
         doc = Document()
         p = doc.add_paragraph()
         p.alignment = alignment
-        p.add_run(content).font.size = Pt(font_size)
+        p.style.font.size = Pt(font_size)
+        p.add_run(content)
         doc.save(self.file_path)
         return True
 
@@ -60,8 +60,8 @@ class DocFileHandler:
         doc = Document()
         table = doc.add_table(rows=1, cols=len(data[0]))
         for i, row in enumerate(data):
-            for j, cell_data in enumerate(row):
-                table.cell(i, j).text = str(cell_data)
+            for j, cell in enumerate(row):
+                table.cell(i, j).text = str(cell)
         doc.save(self.file_path)
         return True
 

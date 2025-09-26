@@ -17,7 +17,7 @@ model:
 data:
   dataset_name: FudanSELab/ClassEval
   split: auto        # auto | train | validation | test
-  limit: 50          # -1 for all, else first N samples (ignored if task_ids provided)
+  limit: 20          # -1 for all, else first N samples (ignored if task_ids provided)
   # Optional list of tasks to evaluate. Accepts either real task_ids
   # (e.g., "ClassEval_9") or numeric indices (e.g., 9). Numeric IDs
   # will be resolved to "ClassEval_<n>" or dataset index fallback.

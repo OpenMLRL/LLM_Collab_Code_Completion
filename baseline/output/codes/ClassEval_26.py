@@ -13,9 +13,6 @@ class CSVProcessor:
         Read the csv file by file_name, get the title and data from it
         :param file_name: str, name of the csv file
         :return title, data: (list, list), first row is title, the rest is data
-        >>> csvProcessor = CSVProcessor()
-        >>> csvProcessor.read_csv('read_test.csv')
-        (['a', 'b', 'c', 'd'], [['hElLo', 'YoU', 'ME', 'LoW']])
         """
         with open(file_name, 'r') as file:
             reader = csv.reader(file)
@@ -28,14 +25,15 @@ class CSVProcessor:
         Write data into a csv file.
         :param file_name: str, name of the csv file
         :return:int, if success return 1, or 0 otherwise
-        >>> csvProcessor = CSVProcessor()
-        >>> csvProcessor.write_csv([['a', 'b', 'c', 'd'], ['1', '2', '3', '4']], 'write_test.csv')
-        1
         """
-        with open(file_name, 'w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerows(data)
-        return 1
+        try:
+            with open(file_name, 'w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerows(data)
+            return 1
+        except Exception as e:
+            print(f"Error writing CSV file: {e}")
+            return 0
 
     def process_csv_data(self, N, save_file_name):
         """
@@ -45,13 +43,6 @@ class CSVProcessor:
         :param N: int, the N th column(from 0)
         :param save_file_name, the name of file that needs to be processed.
         :return:int, if success return 1, or 0 otherwise
-        >>> csvProcessor = CSVProcessor()
-        >>> csvProcessor.read_csv('read_test.csv')
-        (['a', 'b', 'c', 'd'], [['hElLo', 'YoU', 'ME', 'LoW']])
-        >>> csvProcessor.process_csv_data(0, 'read_test.csv')
-        1
-        >>> csvProcessor.read_csv('read_test_process.csv')
-        (['a', 'b', 'c', 'd'], [['HELLO']])
         """
         title, data = self.read_csv(save_file_name)
         new_data = [[row[N].upper() for row in data]]

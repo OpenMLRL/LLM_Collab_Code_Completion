@@ -21,8 +21,8 @@ class DatabaseProcessor:
         :param key2: str, the name of the second column in the table.
         """
         conn = sqlite3.connect(self.database_name)
-        cursor = conn.cursor()
-        cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} (id INTEGER PRIMARY KEY, {key1} TEXT, {key2} INTEGER)")
+        c = conn.cursor()
+        c.execute(f"CREATE TABLE IF NOT EXISTS {table_name} (id INTEGER PRIMARY KEY, {key1} TEXT, {key2} INTEGER)")
         conn.commit()
         conn.close()
 
@@ -33,9 +33,9 @@ class DatabaseProcessor:
         :param data: list, a list of dictionaries where each dictionary represents a row of data.
         """
         conn = sqlite3.connect(self.database_name)
-        cursor = conn.cursor()
+        c = conn.cursor()
         for row in data:
-            cursor.execute(f"INSERT INTO {table_name} ({', '.join(row.keys())}) VALUES ({', '.join(['?' for _ in row])})", tuple(row.values()))
+            c.execute(f"INSERT INTO {table_name} ({', '.join(row.keys())}) VALUES ({', '.join(['?'] * len(row))})", tuple(row.values()))
         conn.commit()
         conn.close()
 
@@ -48,9 +48,9 @@ class DatabaseProcessor:
                     otherwise, returns None.
         """
         conn = sqlite3.connect(self.database_name)
-        cursor = conn.cursor()
-        cursor.execute(f"SELECT * FROM {table_name} WHERE {name} = ?", (name,))
-        result = cursor.fetchall()
+        c = conn.cursor()
+        c.execute(f"SELECT * FROM {table_name} WHERE {name}=?", (name,))
+        result = c.fetchall()
         conn.close()
         return result
 
@@ -61,8 +61,8 @@ class DatabaseProcessor:
         :param name: str, the name to match for deletion.
         """
         conn = sqlite3.connect(self.database_name)
-        cursor = conn.cursor()
-        cursor.execute(f"DELETE FROM {table_name} WHERE {name} = ?", (name,))
+        c = conn.cursor()
+        c.execute(f"DELETE FROM {table_name} WHERE {name}=?", (name,))
         conn.commit()
         conn.close()
 

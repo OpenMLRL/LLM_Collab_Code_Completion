@@ -32,7 +32,8 @@ class AssessmentSystem:
         >>> system.students
         {'student 1': {'name': 'student 1', 'grade': 3, 'major': 'SE', 'courses': {'math': 94}}}
         """
-        self.students[name]['courses'][course] = score
+        if name in self.students:
+            self.students[name]['courses'][course] = score
 
     def get_gpa(self, name):
         """
@@ -48,7 +49,8 @@ class AssessmentSystem:
         """
         if name in self.students and self.students[name]['courses']:
             total_score = sum(self.students[name]['courses'].values())
-            return total_score / len(self.students[name]['courses'])
+            num_courses = len(self.students[name]['courses'])
+            return total_score / num_courses
         return None
 
     def get_all_students_with_fail_course(self):
@@ -67,8 +69,15 @@ class AssessmentSystem:
         :param course: str, course name
         :return: float, average scores of this course if anyone have score of this course, or None if nobody have records.
         """
-        total_score = sum(score for name, info in self.students.items() if course in info['courses'] for score in info['courses'][course].values())
-        return total_score / len([name for name, info in self.students.items() if course in info['courses']])
+        total_score = 0
+        num_students = 0
+        for name, info in self.students.items():
+            if course in info['courses']:
+                total_score += info['courses'][course]
+                num_students += 1
+        if num_students > 0:
+            return total_score / num_students
+        return None
 
     def get_top_student(self):
         """

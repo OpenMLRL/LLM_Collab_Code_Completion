@@ -15,11 +15,12 @@ class DataStatistics4:
         >>> DataStatistics4.correlation_coefficient([1, 2, 3], [4, 5, 6])
         0.9999999999999998
         """
-        mean1 = sum(data1) / len(data1)
-        mean2 = sum(data2) / len(data2)
-        std1 = math.sqrt(sum((x - mean1) ** 2 for x in data1) / len(data1))
-        std2 = math.sqrt(sum((y - mean2) ** 2 for y in data2) / len(data2))
-        covariance = sum((x - mean1) * (y - mean2) for x, y in zip(data1, data2)) / len(data1)
+        n = len(data1)
+        mean1 = sum(data1) / n
+        mean2 = sum(data2) / n
+        covariance = sum((data1[i] - mean1) * (data2[i] - mean2) for i in range(n)) / (n - 1)
+        std1 = math.sqrt(sum((data1[i] - mean1) ** 2 for i in range(n)) / (n - 1))
+        std2 = math.sqrt(sum((data2[i] - mean2) ** 2 for i in range(n)) / (n - 1))
         return covariance / (std1 * std2)
 
     @staticmethod
@@ -31,9 +32,10 @@ class DataStatistics4:
         >>> DataStatistics4.skewness([1, 2, 5])
         2.3760224064818463
         """
-        mean = sum(data) / len(data)
-        std = math.sqrt(sum((x - mean) ** 2 for x in data) / len(data))
-        return sum((x - mean) ** 3 for x in data) / (len(data) * std ** 3)
+        n = len(data)
+        mean = sum(data) / n
+        std = math.sqrt(sum((x - mean) ** 2 for x in data) / (n - 1))
+        return sum((x - mean) ** 3 for x in data) / (std ** 3 * (n - 1))
 
     @staticmethod
     def kurtosis(data):
@@ -41,12 +43,13 @@ class DataStatistics4:
         Calculate the kurtosis of a set of data.
         :param data: The input data list, list.
         :return: The kurtosis, float.
-        >>> DataStatistics4.kurtosis([1, 20, 100])
+        >>> DataStatistics4.kurtosis([1, 20,100])
         -1.5000000000000007
         """
-        mean = sum(data) / len(data)
-        std = math.sqrt(sum((x - mean) ** 2 for x in data) / len(data))
-        return sum((x - mean) ** 4 for x in data) / (len(data) * std ** 4) - 3
+        n = len(data)
+        mean = sum(data) / n
+        std = math.sqrt(sum((x - mean) ** 2 for x in data) / (n - 1))
+        return sum((x - mean) ** 4 for x in data) / (std ** 4 * (n - 1)) - 3
 
     @staticmethod
     def pdf(data, mu, sigma):

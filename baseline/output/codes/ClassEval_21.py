@@ -47,10 +47,9 @@ class Classroom:
         :param new_course: dict, information of the course, including 'start_time', 'end_time' and 'name'
         :return: False if the new course time conflicts(including two courses have the same boundary time) with other courses, or True otherwise.
         """
+        new_course_time = datetime.strptime(new_course['start_time'], '%H:%M')
         for course in self.courses:
-            if new_course['start_time'] == course['start_time'] or new_course['end_time'] == course['end_time']:
-                return False
-            if new_course['start_time'] < course['end_time'] and new_course['end_time'] > course['start_time']:
+            if new_course_time >= datetime.strptime(course['start_time'], '%H:%M') and new_course_time <= datetime.strptime(course['end_time'], '%H:%M'):
                 return False
         return True
 

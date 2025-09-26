@@ -56,13 +56,13 @@ class CalendarUtil:
         :param end_time: The end time of the time slot,datetime.
         :return: True if the calendar is available for the given time slot, False otherwise,bool.
         >>> calendar = CalendarUtil()
-        >>> calendar.events = [{'date': datetime(2023, 1, 1, 0, 0), 'start_time': datetime(2023, 1, 1, 0, 0), 'end_time': datetime(2023, 1, 1, 23, 0), 'description': 'New Year'}]
+        >>> calendar.events = [{'date': datetime(2023, 1, 1, 0, 0), 'start_time': datetime(2023, 1, 1, 0, 0), 'end_time': datetime(2023, 1, 1, 1, 0), 'description': 'New Year'}]
         >>> calendar.is_available(datetime(2023, 1, 1, 0, 0), datetime(2023, 1, 1, 1, 0))
         False
 
         """
         for event in self.events:
-            if start_time >= event['start_time'] and end_time <= event['end_time']:
+            if start_time <= event['end_time'] and end_time >= event['start_time']:
                 return False
         return True
 
@@ -80,15 +80,11 @@ class CalendarUtil:
         available_slots = []
         for event in self.events:
             if event['date'] == date:
-                if event['start_time'] > date:
-                    start_time = date + timedelta(days=1)
-                else:
-                    start_time = event['start_time']
-                if event['end_time'] < date:
-                    end_time = date + timedelta(days=1)
-                else:
-                    end_time = event['end_time']
-                available_slots.append((start_time, end_time))
+                start_time = event['start_time']
+                end_time = event['end_time']
+                while start_time < end_time:
+                    available_slots.append((start_time, start_time + timedelta(hours=1)))
+                    start_time += timedelta(hours=1)
         return available_slots
 
     def get_upcoming_events(self, num_events):
@@ -107,4 +103,6 @@ class CalendarUtil:
         for event in self.events:
             if event['date'] >= date:
                 upcoming_events.append(event)
-        return upcoming_events[:num_events]
+                if len(upcoming_events) == num_events:
+                    break
+        return upcoming_events
