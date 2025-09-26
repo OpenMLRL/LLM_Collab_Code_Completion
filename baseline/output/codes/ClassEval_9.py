@@ -27,19 +27,19 @@ class BigNumCalculator:
         # Initialize the result list
         result = []
 
-        # Perform addition from right to left
+        # Perform addition
         carry = 0
         for i in range(max_length - 1, -1, -1):
-            total = num1_list[i] + num2_list[i] + carry
-            carry = total // 10
-            result.insert(0, total % 10)
+            sum_digits = num1_list[i] + num2_list[i] + carry
+            result.append(sum_digits % 10)
+            carry = sum_digits // 10
 
         # Add any remaining carry
         if carry:
-            result.insert(0, carry)
+            result.append(carry)
 
         # Convert the result list back to a string
-        return ''.join(map(str, result))
+        return ''.join(str(digit) for digit in result[::-1])
 
     @staticmethod
     def subtract(num1, num2):
@@ -65,25 +65,23 @@ class BigNumCalculator:
         # Initialize the result list
         result = []
 
-        # Perform subtraction from right to left
+        # Perform subtraction
         carry = 0
         for i in range(max_length - 1, -1, -1):
-            diff = num1_list[i] - num2_list[i] - carry
-            if diff < 0:
-                diff += 10
+            diff_digits = num1_list[i] - num2_list[i] - carry
+            if diff_digits < 0:
+                diff_digits += 10
                 carry = 1
             else:
                 carry = 0
-            result.insert(0, diff)
+            result.append(diff_digits)
 
         # Remove leading zeros
-        result = ''.join(map(str, result)).lstrip('0')
+        while result and result[0] == 0:
+            result.pop(0)
 
-        # If the result is empty, it means num1 was greater than num2
-        if not result:
-            return '-'
-
-        return result
+        # Convert the result list back to a string
+        return ''.join(str(digit) for digit in result[::-1])
 
     @staticmethod
     def multiply(num1, num2):
@@ -102,7 +100,26 @@ class BigNumCalculator:
         num2_list = [int(digit) for digit in num2]
 
         # Initialize the result list
-        result = [0] * (len(num1_list) + len(num2_list
+        result = [0] * (len(num1_list) + len(num2_list))
+
+        # Perform multiplication
+        for i in range(len(num1_list)):
+            for j in range(len(num2_list)):
+                result[i + j] += num1_list[i] * num2_list[j]
+
+        # Perform addition to handle carry
+        carry = 0
+        for i in range(len(result)):
+            result[i] += carry
+            carry = result[i] // 10
+            result[i] %= 10
+
+        # Remove leading zeros
+        while result and result[0] == 0:
+            result.pop(0)
+
+        # Convert the result list back to a string
+        return ''.join(str(digit) for digit in result[::-1])
 
 import unittest
 

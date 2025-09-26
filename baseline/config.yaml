@@ -8,7 +8,7 @@ model:
   name: Qwen/Qwen2.5-3B
   dtype: auto         # auto | float16 | bfloat16 | float32
   device_map: auto    # auto | cpu | cuda
-  max_new_tokens: 1024
+  max_new_tokens: 4096
   temperature: 0.2
   top_p: 0.95
   top_k: 50

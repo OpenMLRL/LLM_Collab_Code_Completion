@@ -1,14 +1,0 @@
-[2025-09-25T20:46:09] Loading dataset: FudanSELab/ClassEval (split=auto)
-[2025-09-25T20:46:13] Dataset size: 100
-[2025-09-25T20:46:13] Loading model: Qwen/Qwen2.5-3B
-Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:01<00:01,  1.22s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.25s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.24s/it]
-[2025-09-25T20:46:29] [1/1] Generating for task_id=ClassEval_9 ...
-The attention mask is not set and cannot be inferred from input because pad token is same as eos token. As a consequence, you may observe unexpected behavior. Please pass your input's `attention_mask` to obtain reliable results.
-Traceback (most recent call last):
-  File "/u/tchen19/LLM_MultiAgent_ClassEval/baseline/main.py", line 560, in <module>
-    main()
-  File "/u/tchen19/LLM_MultiAgent_ClassEval/baseline/main.py", line 520, in main
-    res = run_unittests_in_subprocess(out_file, timeout=eval_cfg.timeout_seconds)
-  File "/u/tchen19/LLM_MultiAgent_ClassEval/baseline/main.py", line 290, in run_unittests_in_subprocess
-    runner_code = f"""
-ValueError: Invalid format specifier

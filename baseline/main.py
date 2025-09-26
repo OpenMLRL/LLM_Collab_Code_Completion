@@ -192,6 +192,9 @@ class LMGenerator:
         self.tokenizer = AutoTokenizer.from_pretrained(
             cfg.name, trust_remote_code=trust_remote_code
         )
+        # Ensure pad token exists (align with train_magrpo.py practice)
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
         self.model = AutoModelForCausalLM.from_pretrained(
             cfg.name,
             trust_remote_code=trust_remote_code,
@@ -202,11 +205,37 @@ class LMGenerator:
 
         # Ensure EOS token is set for clean stopping
         self.eos_token_id = self.tokenizer.eos_token_id
+        # Infer context window so we can leave headroom for generation
+        self._context_len = self._infer_context_length()
+
+    def _infer_context_length(self) -> int:
+        """Infer model max context length from config with a safe fallback."""
+        cfg = getattr(self.model, "config", None)
+        for attr in (
+            "max_position_embeddings",
+            "max_sequence_length",
+            "n_positions",
+            "seq_length",
+            "max_seq_len",
+        ):
+            v = getattr(cfg, attr, None)
+            if isinstance(v, int) and v > 0:
+                return int(v)
+        return 4096
 
     def generate(self, prompt: str) -> str:
         import torch  # type: ignore
 
-        inputs = self.tokenizer(prompt, return_tensors="pt", return_attention_mask=True)
+        # Truncate prompt to leave room for generation, avoiding mid-code cutoff
+        reserved = max(16, int(self.cfg.max_new_tokens * 0.02))
+        max_input_len = max(32, self._context_len - self.cfg.max_new_tokens - reserved)
+        inputs = self.tokenizer(
+            prompt,
+            return_tensors="pt",
+            return_attention_mask=True,
+            truncation=True,
+            max_length=max_input_len,
+        )
         input_ids = inputs["input_ids"].to(self.model.device)
         attention_mask = inputs.get("attention_mask")
         if attention_mask is not None:
@@ -219,7 +248,7 @@ class LMGenerator:
             "top_p": self.cfg.top_p,
             "top_k": self.cfg.top_k,
             "eos_token_id": self.eos_token_id,
-            "pad_token_id": self.tokenizer.eos_token_id,
+            "pad_token_id": self.tokenizer.pad_token_id,
         }
 
         with torch.no_grad():
@@ -228,10 +257,9 @@ class LMGenerator:
             else:
                 outputs = self.model.generate(input_ids=input_ids, **gen_kwargs)
 
-        text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        # Remove the prompt prefix
-        if text.startswith(prompt):
-            text = text[len(prompt):]
+        # Decode only the newly generated tokens (avoid relying on prompt string matching)
+        gen_only_ids = outputs[0][input_ids.shape[1]:]
+        text = self.tokenizer.decode(gen_only_ids, skip_special_tokens=True)
         return text.strip()
 
 

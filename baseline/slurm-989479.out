@@ -1,10 +1,0 @@
-Loading model: Qwen/Qwen2.5-3B
-Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:01<00:01,  1.71s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:04<00:00,  2.33s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:04<00:00,  2.24s/it]
-Evaluating 1/100 samples from split 'test'.
-Setting `pad_token_id` to `eos_token_id`:151643 for open-end generation.
-huggingface/tokenizers: The current process just got forked, after parallelism has already been used. Disabling parallelism to avoid deadlocks...
-To disable this warning, you can either:
-	- Avoid using `tokenizers` before the fork if possible
-	- Explicitly set the environment variable TOKENIZERS_PARALLELISM=(true | false)
-Processed 1/1 | pass@1 so far: 0.000
-Done. Metrics written to: baseline/output/metrics.json
