@@ -1,0 +1,22 @@
+{
+  "timestamp": "2025-09-25T20:52:08",
+  "model_name": "Qwen/Qwen2.5-3B",
+  "dataset": "FudanSELab/ClassEval",
+  "split": "auto",
+  "num_evaluated": 1,
+  "num_passed_all": 0,
+  "pass_rate": 0.0,
+  "timeout_seconds": 30,
+  "results": [
+    {
+      "exception": "'(' was never closed (ClassEval_9.py, line 105)",
+      "traceback": "Traceback (most recent call last):\n  File \"<string>\", line 10, in <module>\n  File \"<frozen importlib._bootstrap_external>\", line 879, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1017, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 947, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 241, in _call_with_frames_removed\n  File \"/u/tchen19/LLM_MultiAgent_ClassEval/baseline/output/codes/ClassEval_9.py\", line 105\n    result = [0] * (len(num1_list) + len(num2_list\n                                        ^\nSyntaxError: '(' was never closed\n",
+      "timeout": false,
+      "exit_code": 2,
+      "stdout": "{\"exception\": \"'(' was never closed (ClassEval_9.py, line 105)\", \"traceback\": \"Traceback (most recent call last):\\n  File \\\"<string>\\\", line 10, in <module>\\n  File \\\"<frozen importlib._bootstrap_external>\\\", line 879, in exec_module\\n  File \\\"<frozen importlib._bootstrap_external>\\\", line 1017, in get_code\\n  File \\\"<frozen importlib._bootstrap_external>\\\", line 947, in source_to_code\\n  File \\\"<frozen importlib._bootstrap>\\\", line 241, in _call_with_frames_removed\\n  File \\\"/u/tchen19/LLM_MultiAgent_ClassEval/baseline/output/codes/ClassEval_9.py\\\", line 105\\n    result = [0] * (len(num1_list) + len(num2_list\\n                                        ^\\nSyntaxError: '(' was never closed\\n\"}",
+      "stderr": "",
+      "task_id": "ClassEval_9",
+      "code_path": "baseline/output/codes/ClassEval_9.py"
+    }
+  ]
+}

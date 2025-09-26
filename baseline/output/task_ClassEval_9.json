@@ -1,8 +1,0 @@
-{
-  "task_id": "ClassEval_9",
-  "passed": false,
-  "runtime_sec": 11.790678262710571,
-  "error": "Exception: ",
-  "sample_index": 9,
-  "code_path": "baseline/output/generated_ClassEval_9.py"
-}
