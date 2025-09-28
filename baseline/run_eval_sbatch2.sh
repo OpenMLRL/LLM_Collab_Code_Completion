@@ -7,11 +7,11 @@
 set -euo pipefail
 
 # Defaults (override via *_OVERRIDE env vars below)
-PARTITION="gpu-interactive"
+PARTITION="gpu"
 GPU_TYPE="h200"
 GPUS=1
 MEM="100G"
-TIME="02:00:00"
+TIME="08:00:00"
 
 # Resolve repo root from this script path (baseline/..)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
