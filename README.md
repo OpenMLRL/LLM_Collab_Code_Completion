@@ -1,4 +1,4 @@
-# LLM_MultiAgent_ClassEval
+# LLM_Collab_Module_Completion
 
 Dataset link:
 
