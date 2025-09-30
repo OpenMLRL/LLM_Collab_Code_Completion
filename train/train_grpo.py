@@ -41,8 +41,10 @@ sys.path.insert(0, REPO_ROOT)
 
 from datasets import load_dataset  # type: ignore
 from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
+import torch  # type: ignore
 
 from comlrl.trainers.magrpo import MAGRPOConfig, MAGRPOTrainer  # type: ignore
+import inspect
 from comlrl.utils.reward_processor import RewardProcessors  # type: ignore
 
 # Local utils
@@ -72,23 +74,89 @@ def load_yaml(path: str) -> Dict[str, Any]:
 
 def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
     tr = cfg.get("trainer", {})
-    # Temperature / top_p optionally fall back to model defaults
-    return MAGRPOConfig(
-        output_dir=tr.get("output_dir", os.path.join(REPO_ROOT, "runs")),
-        num_train_epochs=tr.get("num_train_epochs", 3),
-        per_device_train_batch_size=tr.get("per_device_train_batch_size", 1),
-        learning_rate=tr.get("learning_rate", 3e-5),
-        logging_steps=tr.get("logging_steps", 50),
-        save_steps=tr.get("save_steps", 200),
-        num_generations=tr.get("num_generations", 4),
-        max_new_tokens=tr.get("max_new_tokens", 512),
-        temperature=tr.get("temperature", 0.2),
-        top_p=tr.get("top_p", 0.95),
-        num_turns=tr.get("num_turns", 1),  # single-turn by default
-        # GRPO-style advantage parameters if present
-        normalize_advantage=tr.get("normalize_advantage", False),
-        epsilon_clip=tr.get("epsilon_clip", None),
-    )
+
+    # Helpers to robustly coerce config values to numeric types
+    def _as_int(x: Any, default: int) -> int:
+        if x is None:
+            return int(default)
+        if isinstance(x, bool):  # avoid True/False becoming 1/0
+            return int(default)
+        if isinstance(x, (int,)):
+            return int(x)
+        if isinstance(x, float):
+            return int(x)
+        if isinstance(x, str):
+            s = x.strip()
+            try:
+                if s.lower().startswith("0x"):
+                    return int(s, 16)
+                return int(float(s))
+            except Exception:
+                return int(default)
+        return int(default)
+
+    def _as_float(x: Any, default: float) -> float:
+        if x is None:
+            return float(default)
+        if isinstance(x, bool):
+            return float(default)
+        if isinstance(x, (int, float)):
+            return float(x)
+        if isinstance(x, str):
+            s = x.strip()
+            try:
+                return float(s)
+            except Exception:
+                return float(default)
+        return float(default)
+
+    def _as_opt_float(x: Any, default: Optional[float]) -> Optional[float]:
+        if x is None:
+            return default
+        if isinstance(x, bool):
+            return default
+        if isinstance(x, (int, float)):
+            return float(x)
+        if isinstance(x, str):
+            s = x.strip().lower()
+            if s in ("none", "null", ""):
+                return None
+            try:
+                return float(s)
+            except Exception:
+                return default
+        return default
+
+    # Build candidate kwargs; filter by installed MAGRPOConfig signature for compatibility
+    candidate = {
+        "output_dir": tr.get("output_dir", os.path.join(REPO_ROOT, "runs")),
+        "num_train_epochs": _as_int(tr.get("num_train_epochs", 3), 3),
+        "per_device_train_batch_size": _as_int(tr.get("per_device_train_batch_size", 1), 1),
+        "learning_rate": _as_float(tr.get("learning_rate", 3e-5), 3e-5),
+        "logging_steps": _as_int(tr.get("logging_steps", 50), 50),
+        "save_steps": _as_int(tr.get("save_steps", 200), 200),
+        "num_generations": _as_int(tr.get("num_generations", 4), 4),
+        "max_new_tokens": _as_int(tr.get("max_new_tokens", 512), 512),
+        "temperature": _as_float(tr.get("temperature", 0.2), 0.2),
+        "top_p": _as_float(tr.get("top_p", 0.95), 0.95),
+        "num_turns": _as_int(tr.get("num_turns", 1), 1),  # single-turn by default
+        # GRPO-style advantage parameters (may not exist in older CoMLRL)
+        "normalize_advantage": bool(tr.get("normalize_advantage", False)),
+        "epsilon_clip": _as_opt_float(tr.get("epsilon_clip", None), None),
+    }
+
+    try:
+        params = set(inspect.signature(MAGRPOConfig.__init__).parameters.keys())
+    except Exception:
+        params = set()
+    # Remove implicit args
+    params.discard("self")
+    params.discard("args")
+    params.discard("kwargs")
+
+    # Filter candidate kwargs by supported parameters
+    filtered = {k: v for k, v in candidate.items() if k in params}
+    return MAGRPOConfig(**filtered)
 
 
 def get_reward_function(
@@ -255,14 +323,91 @@ def main():
     tokenizer_kwargs = model_cfg.get("tokenizer_kwargs", {})
     model_kwargs = model_cfg.get("model_kwargs", {})
 
+    # Memory-optimized defaults: prefer bf16 when available
+    # Allow users to set model.dtype or model.torch_dtype: "bf16" | "fp16" | "float16" | "bfloat16" | "float32"
+    dtype_cfg = (
+        model_cfg.get("dtype")
+        or model_cfg.get("torch_dtype")
+        or model_kwargs.get("torch_dtype")
+    )
+
+    def _map_dtype(x):
+        if isinstance(x, torch.dtype):
+            return x
+        if not isinstance(x, str):
+            return None
+        s = x.strip().lower()
+        if s in ("bf16", "bfloat16"):
+            return torch.bfloat16
+        if s in ("fp16", "float16"):
+            return torch.float16
+        if s in ("fp32", "float32"):
+            return torch.float32
+        if s == "auto":
+            return "auto"
+        return None
+
+    torch_dtype = _map_dtype(dtype_cfg)
+    if torch_dtype is None:
+        # Default to bf16 on modern GPUs; fall back to None (model default)
+        try:
+            if torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8:
+                torch_dtype = torch.bfloat16
+        except Exception:
+            torch_dtype = None
+
+    if torch_dtype is not None and "torch_dtype" not in model_kwargs:
+        model_kwargs["torch_dtype"] = torch_dtype
+
+    # Additional memory savers
+    model_kwargs.setdefault("low_cpu_mem_usage", True)
+    model_kwargs.setdefault("attn_implementation", "sdpa")
+
     tokenizer = AutoTokenizer.from_pretrained(model_name, **tokenizer_kwargs)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    agents = [
-        AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
-        for _ in range(num_agents)
-    ]
+    # Prefer distributing agents across visible GPUs when possible
+    try:
+        n_gpus = (torch.cuda.device_count() if torch.cuda.is_available() else 0)
+    except Exception:
+        n_gpus = 0
+
+    per_agent_devices: List[Optional[str]] = []
+    if num_agents > 1 and n_gpus >= num_agents:
+        per_agent_devices = [f"cuda:{i}" for i in range(num_agents)]
+        # Avoid huggingface auto-splitting across GPUs; we want one agent per GPU
+        if isinstance(model_kwargs, dict) and model_kwargs.get("device_map", None) is not None:
+            model_kwargs = dict(model_kwargs)
+            model_kwargs.pop("device_map", None)
+    else:
+        # Single GPU or CPU fallback
+        dev = "cuda:0" if n_gpus >= 1 else None
+        per_agent_devices = [dev for _ in range(num_agents)]
+
+    agents = []
+    for idx in range(num_agents):
+        agent = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+        # Disable cache during training to save memory
+        try:
+            if hasattr(agent, "config"):
+                agent.config.use_cache = False
+        except Exception:
+            pass
+        # Enable gradient checkpointing when requested (default True)
+        if bool(model_cfg.get("gradient_checkpointing", True)):
+            try:
+                agent.gradient_checkpointing_enable()
+            except Exception:
+                pass
+        # Place agent on its target device, if any
+        target_dev = per_agent_devices[idx]
+        if isinstance(target_dev, str):
+            try:
+                agent.to(target_dev)
+            except Exception:
+                pass
+        agents.append(agent)
 
     # Collaboration strategy
     strategy = get_strategy(collab_mode, num_agents=num_agents, seed=seed)

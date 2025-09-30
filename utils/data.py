@@ -6,6 +6,28 @@ import re
 from typing import Any, Dict, Iterable, List, Mapping, Sequence, Tuple
 
 
+def _sanitize_python_source(text: str) -> str:
+    """Normalize common Unicode punctuation to ASCII to avoid AST parse failures.
+
+    This handles smart quotes and a few whitespace/punctuation variants often found
+    in datasets. It is a conservative transformation and should not change semantics.
+    """
+    if not isinstance(text, str) or not text:
+        return text
+    translation = {
+        ord("\u201C"): '"',  # left double smart quote
+        ord("\u201D"): '"',  # right double smart quote
+        ord("\u2018"): "'",  # left single smart quote
+        ord("\u2019"): "'",  # right single smart quote
+        ord("\u2013"): "-",  # en dash
+        ord("\u2014"): "-",  # em dash
+        ord("\u2026"): "...",  # ellipsis
+        ord("\u00A0"): " ",  # non-breaking space
+        ord("\u200B"): None,  # zero width space → remove
+    }
+    return text.translate(translation)
+
+
 def dataset_train_eval_split(ds_all: Any, split_ratio: float = 0.8, seed: int = 42):
     """Return (train, eval) Dataset objects from a datasets.Dataset or DatasetDict.
 
@@ -48,7 +70,8 @@ def dataset_train_eval_split(ds_all: Any, split_ratio: float = 0.8, seed: int = 
 
 def extract_class_name(skeleton: str) -> str | None:
     """Extract the first class name from skeleton."""
-    m = re.search(r"\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*", skeleton)
+    sk = _sanitize_python_source(skeleton)
+    m = re.search(r"\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*", sk)
     return m.group(1) if m else None
 
 
@@ -72,10 +95,24 @@ def extract_incomplete_methods(skeleton: str) -> List[str]:
                 methods.append(name)
         return methods
 
-    class_name = extract_class_name(skeleton)
+    sk = _sanitize_python_source(skeleton)
+    class_name = extract_class_name(sk)
     if not class_name:
         return []
-    tree = ast.parse(skeleton)
+    try:
+        tree = ast.parse(sk)
+    except Exception:
+        # Fallback: simple regex for 'def name(' within the first class block
+        methods = []
+        in_class = False
+        for line in sk.splitlines():
+            if line.strip().startswith("class ") and class_name in line:
+                in_class = True
+                continue
+            if in_class and line.lstrip().startswith("def "):
+                name = line.strip().split()[1].split("(")[0]
+                methods.append(name)
+        return methods
     targets: List[str] = []
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == class_name:
@@ -135,4 +172,3 @@ def get_method_partition_for_example(
     for m in methods:
         assignment[m] = rnd.randrange(num_agents)
     return assignment
-

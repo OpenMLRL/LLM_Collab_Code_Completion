@@ -17,6 +17,7 @@ from typing import Any, Dict, List
 from LLM_Collab_Module_Completion.utils.data import (
     extract_incomplete_methods,
     extract_class_name,
+    _sanitize_python_source,
 )
 from LLM_Collab_Module_Completion.utils.prompting import build_agent_prompt
 
@@ -74,6 +75,7 @@ def build_agent_formatters(strategy: CollaborationStrategy) -> List:
     def make_fmt(agent_idx: int):
         def _fmt(example: Dict[str, Any]) -> str:
             skeleton = example.get("skeleton", "")
+            skeleton = _sanitize_python_source(skeleton)
             class_name = example.get("class_name") or extract_class_name(skeleton) or ""
             # class_name may not be present; it's ok to pass empty
             partition = strategy.partition(example)

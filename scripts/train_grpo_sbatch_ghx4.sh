@@ -29,7 +29,7 @@ TIME="${TIME_OVERRIDE:-$TIME}"
 # W&B overrides
 WAND_PROJECT="${WAND_PROJECT_OVERRIDE:-CE}"
 WAND_ENTITY="${WAND_ENTITY_OVERRIDE:-2478906339-null}"
-WAND_DIR="${WAND_DIR_OVERRIDE:-/projects/llpr/tenshi/output}"
+WAND_DIR="${WAND_DIR_OVERRIDE:-../../../projects/bevi/tchen19/output}"
 
 # Collaboration overrides
 MODE="${MODE_OVERRIDE:-RAND_PARTITION}"   # ONE | RAND_PARTITION
@@ -42,6 +42,7 @@ WRAP_CMD="cd ${REPO_DIR} \
 && source \$(conda info --base)/etc/profile.d/conda.sh \
 && source ~/.bashrc \
 && conda activate comlrl \
+&& export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 && export PYTHONPATH=\"\${PYTHONPATH}:\$(pwd)\" \
 && python3 -u ${TRAIN_REL} --config ${CONFIG_PATH} \
    --override \"wandb.enabled=true,wandb.project=${WAND_PROJECT},wandb.entity=${WAND_ENTITY},wandb.dir=${WAND_DIR},collab.mode=${MODE},collab.num_agents=${NUM_AGENTS}\""
@@ -61,4 +62,3 @@ sbatch \
 echo "Submitted GRPO training job with config: ${CONFIG_PATH}"
 echo "Account=${ACCOUNT} Partition=${PARTITION} GPUs=${GPUS} CPUs=${CPUS} MEM=${MEM} TIME=${TIME}"
 echo "W&B: project=${WAND_PROJECT} entity=${WAND_ENTITY} dir=${WAND_DIR} | Collab: ${MODE}/${NUM_AGENTS}"
-
