@@ -1,0 +1,125 @@
+from __future__ import annotations
+
+import re
+from typing import Dict, List, Tuple
+
+
+def _find_class_block(lines: List[str], class_name: str) -> Tuple[int, int, int]:
+    """Locate the class block by name.
+
+    Returns (class_start_index, class_end_index_exclusive, class_indent_spaces)
+    class_start_index points to the 'class <name>:' line.
+    The end is the first line after the class whose indentation is less than or equal to class indent.
+    """
+    pat = re.compile(rf"^\s*class\s+{re.escape(class_name)}\s*:\s*")
+    start = -1
+    for i, line in enumerate(lines):
+        if pat.match(line):
+            start = i
+            break
+    if start == -1:
+        return -1, -1, 0
+
+    # class indent is indentation of next non-empty line after the class header
+    class_indent = None
+    for j in range(start + 1, len(lines)):
+        s = lines[j]
+        if not s.strip():
+            continue
+        indent = len(s) - len(s.lstrip(" "))
+        class_indent = indent
+        break
+    if class_indent is None:
+        class_indent = 4  # assume one indent
+
+    # Find end of class block
+    end = len(lines)
+    for k in range(start + 1, len(lines)):
+        s = lines[k]
+        if not s.strip():
+            continue
+        indent = len(s) - len(s.lstrip(" "))
+        # class ends when indentation drops to less than class indent and not a decorator/continuation
+        if indent < class_indent and not s.lstrip().startswith("@"):
+            end = k
+            break
+    return start, end, class_indent
+
+
+def _find_method_region(lines: List[str], class_start: int, class_end: int, class_indent: int, method_name: str) -> Tuple[int, int, int]:
+    """Find start (def line) and end (exclusive) of a method region inside the class.
+    Returns (start_idx, end_idx, def_indent_spaces). If not found, returns (-1, -1, class_indent+4).
+    """
+    pat = re.compile(r'^\s*def\s+' + re.escape(method_name) + r'\s*\(')
+    start = -1
+    def_indent = class_indent
+    for i in range(class_start + 1, class_end):
+        line = lines[i]
+        if pat.match(line):
+            start = i
+            def_indent = len(line) - len(line.lstrip(" "))
+            break
+    if start == -1:
+        return -1, -1, class_indent + 4
+    # find end: next def at same indentation or end of class
+    end = class_end
+    for j in range(start + 1, class_end):
+        s = lines[j]
+        if re.match(r"^\s*def\s+[A-Za-z_]", s):
+            indent = len(s) - len(s.lstrip(" "))
+            if indent == def_indent:
+                end = j
+                break
+    return start, end, def_indent
+
+
+def _indent_block(block: str, indent_spaces: int) -> List[str]:
+    pad = " " * indent_spaces
+    out: List[str] = []
+    for line in block.splitlines():
+        if line.strip():
+            out.append(pad + line)
+        else:
+            out.append(line)
+    if out and not out[-1].endswith("\n"):
+        # ensure trailing newline when joining into code
+        pass
+    return out
+
+
+def merge_methods_into_skeleton(skeleton: str, class_name: str, method_to_code: Dict[str, str]) -> str:
+    """Replace method stubs in skeleton with provided implementations.
+
+    The provided function sources should start with 'def <name>(' at column 0.
+    """
+    if not method_to_code:
+        return skeleton
+    lines = skeleton.splitlines()
+    cstart, cend, cindent = _find_class_block(lines, class_name)
+    if cstart < 0 or cend < 0:
+        return skeleton
+
+    # For deterministic replacements, process methods in the order they appear
+    order: List[Tuple[int, str]] = []
+    for m in method_to_code.keys():
+        s, e, d = _find_method_region(lines, cstart, cend, cindent, m)
+        order.append((s if s >= 0 else 10**9, m))
+    order.sort()
+
+    offset = 0
+    for _, m in order:
+        impl = method_to_code.get(m, None)
+        if not impl:
+            continue
+        # Recompute positions on current lines with offset
+        cstart2, cend2, cindent2 = _find_class_block(lines, class_name)
+        s, e, dindent = _find_method_region(lines, cstart2, cend2, cindent2, m)
+        if s < 0:
+            # Append at end of class (before class end)
+            insert_at = cend2
+            new_block = _indent_block(impl.strip(), cindent2 + 4)
+            lines[insert_at:insert_at] = new_block + [""]
+            continue
+        new_block = _indent_block(impl.strip(), dindent)
+        lines[s:e] = new_block
+    return "\n".join(lines) + ("\n" if not skeleton.endswith("\n") else "")
