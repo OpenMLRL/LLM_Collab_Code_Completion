@@ -25,6 +25,7 @@ import argparse
 import os
 import sys
 from typing import Any, Dict, List, Optional, Tuple, Callable
+import time
 
 try:
     import yaml  # type: ignore
@@ -70,6 +71,22 @@ from LLM_Collab_Module_Completion.collaborations import (
 def load_yaml(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
+
+
+def _resolve_job_id() -> str:
+    """Resolve a job id from environment or fallback to timestamp."""
+    jid = os.environ.get("SLURM_JOB_ID") or os.environ.get("JOB_ID")
+    if jid:
+        return str(jid)
+    return time.strftime("nojid-%Y%m%d-%H%M%S")
+
+
+def _expand_jobid_placeholder(path: str) -> str:
+    if not isinstance(path, str) or not path:
+        return path
+    if "[jobid]" in path:
+        return path.replace("[jobid]", _resolve_job_id())
+    return path
 
 
 def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
@@ -128,8 +145,11 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
         return default
 
     # Build candidate kwargs; filter by installed MAGRPOConfig signature for compatibility
+    output_dir_cfg = tr.get("output_dir", os.path.join(REPO_ROOT, "runs"))
+    output_dir_resolved = _expand_jobid_placeholder(str(output_dir_cfg))
+
     candidate = {
-        "output_dir": tr.get("output_dir", os.path.join(REPO_ROOT, "runs")),
+        "output_dir": output_dir_resolved,
         "num_train_epochs": _as_int(tr.get("num_train_epochs", 3), 3),
         "per_device_train_batch_size": _as_int(tr.get("per_device_train_batch_size", 1), 1),
         "learning_rate": _as_float(tr.get("learning_rate", 3e-5), 3e-5),
@@ -418,6 +438,7 @@ def main():
     model_cfg = cfg.get("model", {})
     data_cfg = cfg.get("data", {})
     collab_cfg = cfg.get("collab", {})
+    output_cfg = cfg.get("output", {})
     seed = int(cfg.get("seed", 42))
 
     dataset_name = data_cfg.get("dataset_name", "FudanSELab/ClassEval")
@@ -437,8 +458,26 @@ def main():
 
     train_ds, eval_ds = dataset_train_eval_split(ds_all, split_ratio=split_ratio, seed=seed)
 
+    # Optional: set temp base dir and keep flag for unit test runner
+    tmp_base = None
+    try:
+        tmp_base = output_cfg.get("tmp_base_dir")
+    except Exception:
+        tmp_base = None
+    if tmp_base:
+        os.environ["CLASSEVAL_TMP_BASE"] = _expand_jobid_placeholder(str(tmp_base))
+    # keep_tmp can be bool or str
+    keep_tmp_val = None
+    try:
+        keep_tmp_val = output_cfg.get("keep_tmp", None)
+    except Exception:
+        keep_tmp_val = None
+    if keep_tmp_val is not None:
+        keep_flag = str(keep_tmp_val).strip().lower() in ("1", "true", "yes", "on")
+        os.environ["CLASSEVAL_KEEP_TMP"] = "1" if keep_flag else "0"
+
     # Prepare tokenizer and agents
-    model_name = model_cfg.get("name", "Qwen/Qwen3-8B")
+    model_name = model_cfg.get("name", "Qwen/Qwen2.5-3B")
     tokenizer_kwargs = model_cfg.get("tokenizer_kwargs", {})
     model_kwargs = model_cfg.get("model_kwargs", {})
 

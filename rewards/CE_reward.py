@@ -19,6 +19,7 @@ import sys
 import tempfile
 import textwrap
 from typing import Any, Dict, List, Optional
+import os
 
 
 def _combine_code(impl_code: str, test_code: str) -> str:
@@ -100,16 +101,36 @@ if __name__ == "__main__":
         sys.exit(2)
 """
 
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=True) as tmp:
-        tmp.write(combined_code)
-        tmp.flush()
+    # Run tests in an isolated temporary working directory so that any
+    # file system side effects from user code or tests do not pollute the repo root.
+    # If a job id is available (e.g., SLURM_JOB_ID), group temp dirs under it to
+    # avoid collisions across concurrent processes while keeping per-call isolation.
+    base_tmp = os.environ.get("CLASSEVAL_TMP_BASE", tempfile.gettempdir())
+    job_id = os.environ.get("SLURM_JOB_ID") or os.environ.get("JOB_ID")
+    # Support placeholder in base path: ".../[jobid]/tmp"
+    if isinstance(base_tmp, str) and job_id and "[jobid]" in base_tmp:
+        try:
+            base_tmp = base_tmp.replace("[jobid]", str(job_id))
+        except Exception:
+            pass
+    tmp_parent = base_tmp
+    try:
+        os.makedirs(tmp_parent, exist_ok=True)
+    except Exception:
+        pass
+
+    with tempfile.TemporaryDirectory(dir=tmp_parent) as tmpdir:
+        py_path = os.path.join(tmpdir, "task_module_payload.py")
+        with open(py_path, "w", encoding="utf-8") as fh:
+            fh.write(combined_code)
         try:
             proc = subprocess.run(
-                [sys.executable, "-c", runner_code, tmp.name],
+                [sys.executable, "-c", runner_code, py_path],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
                 check=False,
+                cwd=tmpdir,
             )
         except subprocess.TimeoutExpired:
             return {

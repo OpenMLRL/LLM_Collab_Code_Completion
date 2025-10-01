@@ -12,10 +12,10 @@ data:
 
 collab:
   mode: RAND_PARTITION           # ONE | RAND_PARTITION
-  num_agents: 2       # used when mode=RAND_PARTITION
+  num_agents: 3       # used when mode=RAND_PARTITION
 
 trainer:
-  output_dir: LLM_Collab_Module_Completion/runs
+  output_dir: ../../../projects/bevi/tchen19/output/CE/[jobid]
   num_train_epochs: 3
   per_device_train_batch_size: 1
   learning_rate: 3e-5
@@ -41,5 +41,8 @@ wandb:
 output:
   save_final_model: false
   save_path: null
+  tmp_base_dir: ../../../projects/bevi/tchen19/output/CE/[jobid]/tmp
+  keep_tmp: true
+  tmp_base_dir: ../../../projects/bevi/tchen19/output/CE/[jobid]/tmp
 
 seed: 42
