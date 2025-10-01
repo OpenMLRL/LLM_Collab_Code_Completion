@@ -27,19 +27,28 @@ WAND_PROJECT="${WAND_PROJECT:-CE}"
 WAND_ENTITY="${WAND_ENTITY:-2478906339-null}"
 WAND_DIR="${WAND_DIR:-/projects/llpr/tenshi/output}"
 
-# Collaboration overrides
-MODE="${MODE:-RAND_PARTITION}"         # ONE | RAND_PARTITION
-NUM_AGENTS="${NUM_AGENTS:-2}"
+# Collaboration overrides (optional). If unset, YAML takes precedence.
+MODE="${MODE:-}"
+NUM_AGENTS="${NUM_AGENTS:-}"
 
 # Optional: path to config.yaml
 CONFIG="${CONFIG:-${REPO_ROOT}/configs/config.yaml}"
 
-PY_CMD="python -u ${REPO_ROOT}/train/train_grpo.py --config ${CONFIG} \n  --override \"wandb.enabled=true,wandb.project=${WAND_PROJECT},wandb.entity=${WAND_ENTITY},wandb.dir=${WAND_DIR},collab.mode=${MODE},collab.num_agents=${NUM_AGENTS}\""
+# Build override string: always include wandb; include collab.* only when explicitly provided
+OVERRIDE="wandb.enabled=true,wandb.project=${WAND_PROJECT},wandb.entity=${WAND_ENTITY},wandb.dir=${WAND_DIR}"
+if [[ -n "${MODE}" ]]; then
+  OVERRIDE="${OVERRIDE},collab.mode=${MODE}"
+fi
+if [[ -n "${NUM_AGENTS}" ]]; then
+  OVERRIDE="${OVERRIDE},collab.num_agents=${NUM_AGENTS}"
+fi
+
+PY_CMD="python -u ${REPO_ROOT}/train/train_grpo.py --config ${CONFIG} \n  --override \"${OVERRIDE}\""
 
 echo "Submitting sbatch job..."
 echo "Partition=${PARTITION} Nodes=${NODES} GRES=${GRES} Time=${TIME}"
 echo "W&B project=${WAND_PROJECT} entity=${WAND_ENTITY} dir=${WAND_DIR}"
-echo "Collab mode=${MODE} num_agents=${NUM_AGENTS}"
+echo "Collab mode=${MODE:-yaml} num_agents=${NUM_AGENTS:-yaml}"
 
 sbatch \
   --partition="${PARTITION}" \
@@ -53,4 +62,3 @@ sbatch \
   -e "${OUT_DIR}/slurm-%j.err" \
   --open-mode=append \
   --wrap="${PY_CMD}"
-

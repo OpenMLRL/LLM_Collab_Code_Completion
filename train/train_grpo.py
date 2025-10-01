@@ -159,6 +159,125 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
     return MAGRPOConfig(**filtered)
 
 
+def _patch_trainer_generation_for_memory():
+    """Monkey-patch MAGRPOTrainer._generate_completions to lower VRAM on single GPU.
+
+    - Force output_scores=False to avoid storing per-step logits during sampling.
+    - Force use_cache=False to reduce KV cache memory at generation time.
+    - Wrap generation under torch.no_grad().
+    """
+    try:
+        orig = MAGRPOTrainer._generate_completions  # type: ignore[attr-defined]
+    except Exception:
+        return
+
+    def wrapped(self, agent, batch_items, agent_idx=0, num_return_sequences=1, max_new_tokens=128, **kwargs):
+        try:
+            kwargs.setdefault("output_scores", False)
+            kwargs.setdefault("use_cache", False)
+            import torch as _torch
+            with _torch.no_grad():
+                return orig(
+                    self,
+                    agent,
+                    batch_items,
+                    agent_idx=agent_idx,
+                    num_return_sequences=num_return_sequences,
+                    max_new_tokens=max_new_tokens,
+                    **kwargs,
+                )
+        except Exception:
+            return orig(
+                self,
+                agent,
+                batch_items,
+                agent_idx=agent_idx,
+                num_return_sequences=num_return_sequences,
+                max_new_tokens=max_new_tokens,
+                **kwargs,
+            )
+
+    try:
+        MAGRPOTrainer._generate_completions = wrapped  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
+def _patch_single_agent_returns():
+    """Monkey-patch MAGRPOTrainer._train_step_returns to support single-agent (GRPO) in
+    CoMLRL versions that only handle multi-agent joint modes during rollout.
+
+    When num_agents==1 and num_turns==1, this path:
+    - generates K completions for agent 0
+    - computes immediate rewards per completion via existing reward_func
+    - treats returns as immediate rewards (single-turn)
+    - computes loss with gradients and steps optimizer for agent 0
+    - returns lightweight batch stats
+    """
+    try:
+        orig = MAGRPOTrainer._train_step_returns  # type: ignore[attr-defined]
+    except Exception:
+        return
+
+    def wrapped(self, batch_item, epoch_turn_rewards, epoch_turn_returns, **kwargs):
+        try:
+            n_turns = int(getattr(self.args, "num_turns", 1))
+            if self.num_agents == 1 and n_turns == 1:
+                import numpy as _np  # type: ignore
+
+                num_gens = int(getattr(self.args, "num_generations", 2))
+                comps = self._generate_completions_with_external_prompts(
+                    self.agents[0],
+                    [batch_item],
+                    agent_idx=0,
+                    num_return_sequences=num_gens,
+                    max_new_tokens=getattr(self.args, "max_new_tokens", 128),
+                    external_prompts=None,
+                    **kwargs,
+                )
+                completions0 = comps.get("completions", [[]])[0]
+                prompts0 = comps.get("prompts", [""])[0]
+                # Compute rewards using existing helper (expects list per agent)
+                rewards_vec = self._compute_rewards(
+                    [prompts0], [completions0], batch_items=[batch_item]
+                )
+                returns_vec = list(map(float, rewards_vec))
+
+                # Optimize single agent
+                self.optimizers[0].zero_grad()
+                agent_loss = self._compute_loss_with_gradients(
+                    self.agents[0], comps, returns_vec
+                )
+                agent_loss.backward()
+                self.optimizers[0].step()
+
+                # Aggregate training-time summaries
+                if epoch_turn_rewards and len(epoch_turn_rewards) > 0:
+                    epoch_turn_rewards[0].append(
+                        float(_np.mean(rewards_vec)) if rewards_vec else 0.0
+                    )
+                if epoch_turn_returns and len(epoch_turn_returns) > 0:
+                    epoch_turn_returns[0].append(
+                        float(_np.mean(returns_vec)) if returns_vec else 0.0
+                    )
+
+                batch_loss = float(_np.mean(_np.abs(returns_vec or [0.0])))
+                stats = {
+                    "batch_mean_reward": float(_np.mean(rewards_vec)) if rewards_vec else 0.0,
+                    "batch_expected_return": float(_np.mean(returns_vec)) if returns_vec else 0.0,
+                }
+                return batch_loss, {0: stats}
+        except Exception:
+            # Fallback to original behavior on any unexpected error
+            pass
+        return orig(self, batch_item, epoch_turn_rewards, epoch_turn_returns, **kwargs)
+
+    try:
+        MAGRPOTrainer._train_step_returns = wrapped  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
 def get_reward_function(
     strategy,
     num_agents: int,
@@ -367,24 +486,6 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Prefer distributing agents across visible GPUs when possible
-    try:
-        n_gpus = (torch.cuda.device_count() if torch.cuda.is_available() else 0)
-    except Exception:
-        n_gpus = 0
-
-    per_agent_devices: List[Optional[str]] = []
-    if num_agents > 1 and n_gpus >= num_agents:
-        per_agent_devices = [f"cuda:{i}" for i in range(num_agents)]
-        # Avoid huggingface auto-splitting across GPUs; we want one agent per GPU
-        if isinstance(model_kwargs, dict) and model_kwargs.get("device_map", None) is not None:
-            model_kwargs = dict(model_kwargs)
-            model_kwargs.pop("device_map", None)
-    else:
-        # Single GPU or CPU fallback
-        dev = "cuda:0" if n_gpus >= 1 else None
-        per_agent_devices = [dev for _ in range(num_agents)]
-
     agents = []
     for idx in range(num_agents):
         agent = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
@@ -398,13 +499,6 @@ def main():
         if bool(model_cfg.get("gradient_checkpointing", True)):
             try:
                 agent.gradient_checkpointing_enable()
-            except Exception:
-                pass
-        # Place agent on its target device, if any
-        target_dev = per_agent_devices[idx]
-        if isinstance(target_dev, str):
-            try:
-                agent.to(target_dev)
             except Exception:
                 pass
         agents.append(agent)
@@ -459,6 +553,10 @@ def main():
     }
     if reward_processor is not None:
         trainer_kwargs["reward_processor"] = reward_processor
+
+    # Apply in-repo patches (no external file changes)
+    _patch_trainer_generation_for_memory()
+    _patch_single_agent_returns()
 
     trainer = MAGRPOTrainer(**trainer_kwargs)
     trainer.train()

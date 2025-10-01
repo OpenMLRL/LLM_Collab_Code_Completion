@@ -31,9 +31,18 @@ WAND_PROJECT="${WAND_PROJECT_OVERRIDE:-CE}"
 WAND_ENTITY="${WAND_ENTITY_OVERRIDE:-2478906339-null}"
 WAND_DIR="${WAND_DIR_OVERRIDE:-../../../projects/bevi/tchen19/output}"
 
-# Collaboration overrides
-MODE="${MODE_OVERRIDE:-RAND_PARTITION}"   # ONE | RAND_PARTITION
-NUM_AGENTS="${NUM_AGENTS_OVERRIDE:-2}"
+# Collaboration overrides (optional). If unset, YAML takes precedence.
+MODE_OVERRIDE="${MODE_OVERRIDE:-}"
+NUM_AGENTS_OVERRIDE="${NUM_AGENTS_OVERRIDE:-}"
+
+# Build override string: always include wandb; include collab.* only when explicitly provided
+OVERRIDE="wandb.enabled=true,wandb.project=${WAND_PROJECT},wandb.entity=${WAND_ENTITY},wandb.dir=${WAND_DIR}"
+if [[ -n "${MODE_OVERRIDE}" ]]; then
+  OVERRIDE="${OVERRIDE},collab.mode=${MODE_OVERRIDE}"
+fi
+if [[ -n "${NUM_AGENTS_OVERRIDE}" ]]; then
+  OVERRIDE="${OVERRIDE},collab.num_agents=${NUM_AGENTS_OVERRIDE}"
+fi
 
 # Optional: direct override for config path
 CONFIG_PATH="${CONFIG_PATH_OVERRIDE:-${REPO_DIR}/${CONFIG_REL}}"
@@ -45,7 +54,7 @@ WRAP_CMD="cd ${REPO_DIR} \
 && export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 && export PYTHONPATH=\"\${PYTHONPATH}:\$(pwd)\" \
 && python3 -u ${TRAIN_REL} --config ${CONFIG_PATH} \
-   --override \"wandb.enabled=true,wandb.project=${WAND_PROJECT},wandb.entity=${WAND_ENTITY},wandb.dir=${WAND_DIR},collab.mode=${MODE},collab.num_agents=${NUM_AGENTS}\""
+   --override \"${OVERRIDE}\""
 
 sbatch \
   --account="${ACCOUNT}" \
@@ -61,4 +70,4 @@ sbatch \
 
 echo "Submitted GRPO training job with config: ${CONFIG_PATH}"
 echo "Account=${ACCOUNT} Partition=${PARTITION} GPUs=${GPUS} CPUs=${CPUS} MEM=${MEM} TIME=${TIME}"
-echo "W&B: project=${WAND_PROJECT} entity=${WAND_ENTITY} dir=${WAND_DIR} | Collab: ${MODE}/${NUM_AGENTS}"
+echo "W&B: project=${WAND_PROJECT} entity=${WAND_ENTITY} dir=${WAND_DIR} | Collab: ${MODE_OVERRIDE:-yaml}/${NUM_AGENTS_OVERRIDE:-yaml}"
