@@ -261,13 +261,23 @@ def main():
     wandb_config = None
     if isinstance(wandb_cfg, dict) and wandb_cfg.get("enabled", False):
         model_short = model_name.split("/")[-1]
+        # Support both `wandb.dir` and `wandb.output_dir` (the latter mapped to W&B dir)
+        dir_val = wandb_cfg.get("dir") or wandb_cfg.get("output_dir")
+        if dir_val:
+            try:
+                dir_val = _expand_jobid_placeholder(str(dir_val))
+            except Exception:
+                dir_val = str(dir_val)
         wandb_config = {
             "project": wandb_cfg.get("project", "classeval"),
             "entity": wandb_cfg.get("entity", None),
             "name": wandb_cfg.get("name", f"classeval_{collab_mode}_{model_short}"),
-            "dir": wandb_cfg.get("dir", None),
+            "dir": dir_val,
             "tags": ["classeval", collab_mode.lower(), f"agents_{num_agents}"],
         }
+        # Best-effort: also set WANDB_DIR env to keep local files out of repo when dir is set
+        if wandb_config.get("dir"):
+            os.environ.setdefault("WANDB_DIR", str(wandb_config["dir"]))
 
     trainer_kwargs = {
         "agents": agents,

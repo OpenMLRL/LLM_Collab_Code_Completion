@@ -214,15 +214,32 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             partition = strategy.partition(example)
 
             method_to_code: Dict[str, str] = {}
+            agent_texts: List[str] = []
             for agent_idx in range(num_agents):
                 comp_text = ""
                 try:
                     comp_text = agent_completions[agent_idx][i]
                 except Exception:
                     comp_text = ""
+                agent_texts.append(comp_text)
                 assigned = [m for m, a in partition.items() if a == agent_idx]
                 snippets = extract_method_snippets(comp_text or "", allowed_methods=set(assigned))
                 method_to_code.update(snippets)
+
+            # Preview generations to stdout (captured by job logs and optionally by W&B console)
+            try:
+                preview_limit = 40000
+                task_id = example.get("task_id")
+                header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
+                print(header, flush=True)
+                for aidx, text in enumerate(agent_texts):
+                    # Keep newlines for readability; still cap total chars
+                    snippet = (text or "")[:preview_limit]
+                    if text and len(text) > preview_limit:
+                        snippet += "..."
+                    print(f"[agent_{aidx}] {snippet}", flush=True)
+            except Exception:
+                pass
 
             combined_code = merge_methods_into_skeleton(
                 skeleton=skeleton,

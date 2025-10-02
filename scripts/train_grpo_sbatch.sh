@@ -22,10 +22,11 @@ TIME="${TIME:-08:00:00}"
 OUT_DIR="${OUT_DIR:-/projects/llpr/tenshi/output}"
 mkdir -p "${OUT_DIR}"
 
-# WandB settings
-WAND_PROJECT="${WAND_PROJECT:-CE}"
-WAND_ENTITY="${WAND_ENTITY:-2478906339-null}"
-WAND_DIR="${WAND_DIR:-/projects/llpr/tenshi/output}"
+# WandB settings (only applied if set)
+WAND_ENABLED="${WAND_ENABLED:-}"
+WAND_PROJECT="${WAND_PROJECT:-}"
+WAND_ENTITY="${WAND_ENTITY:-}"
+WAND_DIR="${WAND_DIR:-}"
 
 # Collaboration overrides (optional). If unset, YAML takes precedence.
 MODE="${MODE:-}"
@@ -34,20 +35,32 @@ NUM_AGENTS="${NUM_AGENTS:-}"
 # Optional: path to config.yaml
 CONFIG="${CONFIG:-${REPO_ROOT}/configs/config.yaml}"
 
-# Build override string: always include wandb; include collab.* only when explicitly provided
-OVERRIDE="wandb.enabled=true,wandb.project=${WAND_PROJECT},wandb.entity=${WAND_ENTITY},wandb.dir=${WAND_DIR}"
+# Build override string: include wandb.* and collab.* only when explicitly provided
+OVERRIDE=""
+if [[ -n "${WAND_ENABLED}" ]]; then
+  OVERRIDE="wandb.enabled=${WAND_ENABLED}"
+fi
+if [[ -n "${WAND_PROJECT}" ]]; then
+  OVERRIDE="${OVERRIDE:+${OVERRIDE},}wandb.project=${WAND_PROJECT}"
+fi
+if [[ -n "${WAND_ENTITY}" ]]; then
+  OVERRIDE="${OVERRIDE:+${OVERRIDE},}wandb.entity=${WAND_ENTITY}"
+fi
+if [[ -n "${WAND_DIR}" ]]; then
+  OVERRIDE="${OVERRIDE:+${OVERRIDE},}wandb.dir=${WAND_DIR}"
+fi
 if [[ -n "${MODE}" ]]; then
-  OVERRIDE="${OVERRIDE},collab.mode=${MODE}"
+  OVERRIDE="${OVERRIDE:+${OVERRIDE},}collab.mode=${MODE}"
 fi
 if [[ -n "${NUM_AGENTS}" ]]; then
-  OVERRIDE="${OVERRIDE},collab.num_agents=${NUM_AGENTS}"
+  OVERRIDE="${OVERRIDE:+${OVERRIDE},}collab.num_agents=${NUM_AGENTS}"
 fi
 
 PY_CMD="python -u ${REPO_ROOT}/train/train_grpo.py --config ${CONFIG} \n  --override \"${OVERRIDE}\""
 
 echo "Submitting sbatch job..."
 echo "Partition=${PARTITION} Nodes=${NODES} GRES=${GRES} Time=${TIME}"
-echo "W&B project=${WAND_PROJECT} entity=${WAND_ENTITY} dir=${WAND_DIR}"
+echo "W&B enabled=${WAND_ENABLED:-yaml} project=${WAND_PROJECT:-yaml} entity=${WAND_ENTITY:-yaml} dir=${WAND_DIR:-yaml}"
 echo "Collab mode=${MODE:-yaml} num_agents=${NUM_AGENTS:-yaml}"
 
 sbatch \
