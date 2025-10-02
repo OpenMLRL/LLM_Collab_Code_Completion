@@ -175,3 +175,96 @@ if __name__ == "__main__":
         }
     )
     return res
+
+
+# ---------- Reward Factory (multi-agent merge + scoring) ----------
+from typing import Callable  # re-export type for signatures
+from LLM_Collab_Module_Completion.utils.data import (
+    extract_class_name,
+    extract_incomplete_methods,
+)
+from LLM_Collab_Module_Completion.utils.parse_completion import extract_method_snippets
+from LLM_Collab_Module_Completion.utils.merge import merge_methods_into_skeleton
+from LLM_Collab_Module_Completion.utils.test_analysis import methods_called_per_test
+
+
+def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]:
+    """Return a reward function that merges per-agent completions, runs tests,
+    and computes the ClassEval reward (syntax + pass ratio + collaboration).
+    """
+
+    def reward_wrapper(*agent_completions, batch_items=None, prompts=None):
+        if not agent_completions:
+            return []
+        batch_size = len(agent_completions[0])
+        rewards: List[float] = []
+
+        for i in range(batch_size):
+            example = {}
+            try:
+                example = batch_items[i] if batch_items is not None else {}
+            except Exception:
+                pass
+
+            skeleton: str = example.get("skeleton", "")
+            test_code: str = example.get("test", "")
+            class_name = extract_class_name(skeleton) or ""
+            method_names = extract_incomplete_methods(skeleton)
+
+            partition = strategy.partition(example)
+
+            method_to_code: Dict[str, str] = {}
+            for agent_idx in range(num_agents):
+                comp_text = ""
+                try:
+                    comp_text = agent_completions[agent_idx][i]
+                except Exception:
+                    comp_text = ""
+                assigned = [m for m, a in partition.items() if a == agent_idx]
+                snippets = extract_method_snippets(comp_text or "", allowed_methods=set(assigned))
+                method_to_code.update(snippets)
+
+            combined_code = merge_methods_into_skeleton(
+                skeleton=skeleton,
+                class_name=class_name,
+                method_to_code=method_to_code,
+            )
+
+            per_test_methods = methods_called_per_test(
+                test_code=test_code,
+                candidate_methods=set(method_names),
+                class_name=class_name,
+            )
+
+            run_res = run_unittests_with_details(combined_code, test_code)
+            syntax_ok = bool(run_res.get("syntax_ok", False))
+            syntax_score = 3.0 if syntax_ok else 0.0
+
+            tests_run = int(run_res.get("testsRun", 0) or 0)
+            passed = int(run_res.get("passed", 0) or 0)
+            r = (passed / tests_run) if tests_run > 0 else 0.0
+            pass_score = 5.0 * r
+
+            test_results = run_res.get("test_results", []) or []
+            num_x_total = 0
+            num_x_passed = 0
+            for tr in test_results:
+                t_id = str(tr.get("id", ""))
+                outcome = str(tr.get("outcome", ""))
+                used = per_test_methods.get(t_id, set())
+                if not used:
+                    continue
+                agents_involved = {partition.get(m, -1) for m in used if m in partition}
+                agents_involved.discard(-1)
+                x = len(agents_involved)
+                if x > 0:
+                    num_x_total += x
+                    if outcome == "passed":
+                        num_x_passed += x
+
+            collab = (2.0 * (num_x_passed / num_x_total)) if num_x_total > 0 else 0.0
+            rewards.append(float(syntax_score + pass_score + collab))
+
+        return rewards
+
+    return reward_wrapper
