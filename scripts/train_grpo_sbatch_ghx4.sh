@@ -10,7 +10,7 @@ PARTITION="ghx4"
 GPUS=1
 CPUS=64
 MEM="100g"
-TIME="12:00:00"
+TIME="36:00:00"
 
 # Resolve repo root from this script path (scripts/..)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
