@@ -131,6 +131,21 @@ def main():
     collab_cfg = cfg.get("collab", {})
     output_cfg = cfg.get("output", {})
     seed = int(cfg.get("seed", 42))
+    # Optional: randomize seed when fixed_seed is false
+    fixed_seed_val = cfg.get("fixed_seed", True)
+    try:
+        fixed_seed = bool(fixed_seed_val)
+    except Exception:
+        fixed_seed = True
+    if not fixed_seed:
+        try:
+            import secrets  # stdlib
+            seed = int(secrets.randbits(32))
+        except Exception:
+            try:
+                seed = int(abs(hash(f"{time.time_ns()}_{os.getpid()}")) % (2**31 - 1))
+            except Exception:
+                seed = int(time.time()) & 0x7FFFFFFF
 
     dataset_name = data_cfg.get("dataset_name", "FudanSELab/ClassEval")
     split_ratio = float(data_cfg.get("split_ratio", 0.8))

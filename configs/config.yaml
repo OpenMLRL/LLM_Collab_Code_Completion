@@ -45,4 +45,5 @@ output:
   keep_tmp: true
   tmp_base_dir: /projects/bevi/tchen19/output/CE/[jobid]/tmp
 
-seed: 42
+fixed_seed: false   # when false, seed is randomized at runtime
+seed: 42           # used only when fixed_seed=true
