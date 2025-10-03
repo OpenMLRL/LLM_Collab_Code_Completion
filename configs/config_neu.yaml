@@ -1,0 +1,48 @@
+model:
+  name: Qwen/Qwen2.5-3B
+  # Optional: pass through to HF
+  tokenizer_kwargs: {}
+  model_kwargs:
+    trust_remote_code: true
+    device_map: auto
+
+data:
+  dataset_name: FudanSELab/ClassEval
+  split_ratio: 0.8  # train/eval split ratio
+
+collab:
+  mode: TAKE_JOB           # ONE | RAND_PARTITION | TAKE_JOB
+  num_agents: 3       # used when mode=RAND_PARTITION or TAKE_JOB
+
+trainer:
+  output_dir: /projects/llpr/tenshi/output/CE/[jobid]
+  num_train_epochs: 3
+  per_device_train_batch_size: 1
+  learning_rate: 2e-5
+  logging_steps: 50
+  save_steps: 200
+  num_generations: 4
+  max_new_tokens: 512
+  temperature: 0.5
+  top_p: 0.90
+  num_turns: 1
+
+reward_processor:
+  enabled: false
+  scale_factor: 1.0
+  shift: null
+
+wandb:
+  enabled: true
+  project: classeval
+  entity: null
+  output_dir: /projects/llpr/tenshi/output/CE/[jobid]/wandb
+
+output:
+  save_final_model: false
+  save_path: null
+  tmp_base_dir: /projects/llpr/tenshi/output/CE/[jobid]/tmp
+  keep_tmp: true
+  tmp_base_dir: /projects/llpr/tenshi/output/CE/[jobid]/tmp
+
+seed: 42
