@@ -474,9 +474,10 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             total = float(ceb + syntax_score + pass_score + lv4)
 
-            # print('=' * 20)
-            # print(ceb, syntax_score, pass_score, lv4)
-            # print('=' * 20)
+            print('=' * 20)
+            print(num_x_passed, num_x_total)
+            print(ceb, syntax_score, pass_score, lv4)
+            print('=' * 20)
 
             rewards.append(total)
 

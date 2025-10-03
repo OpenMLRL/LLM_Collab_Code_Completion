@@ -32,17 +32,29 @@ def methods_called_per_test(test_code: str, candidate_methods: Iterable[str], cl
                 # Direct function call unlikely for methods, ignore
         return acc
 
+    def _is_test_case_base(base: ast.AST) -> bool:
+        # Matches: TestCase, unittest.TestCase, pkg.unittest.TestCase, etc.
+        if isinstance(base, ast.Name):
+            return base.id == "TestCase"
+        if isinstance(base, ast.Attribute):
+            cur = base
+            # Walk rightward attributes: something.something.TestCase
+            while isinstance(cur, ast.Attribute):
+                if getattr(cur, "attr", None) == "TestCase":
+                    return True
+                cur = cur.value
+            if isinstance(cur, ast.Name) and cur.id == "TestCase":
+                return True
+        return False
+
     for n in tree.body:
         if isinstance(n, ast.ClassDef):
-            # Only heuristically accept classes that look like TestCases
-            is_test_case = any(
-                (getattr(base, "id", None) == "TestCase" or getattr(getattr(base, "attr", None), "attr", None) == "TestCase")
-                or (getattr(base, "attr", None) and getattr(base.attr, "id", None) == "TestCase")
-                for base in n.bases
-            )
+            # Robustly accept unittest.TestCase subclasses
+            is_test_case = any(_is_test_case_base(base) for base in n.bases)
             if not is_test_case:
-                # also accept class names starting with Test*
-                is_test_case = n.name.lower().startswith("test") or n.name.lower().endswith("test")
+                # Fallback: class name contains 'test' (case-insensitive)
+                name_l = n.name.lower()
+                is_test_case = ("test" in name_l)
             if not is_test_case:
                 continue
 
@@ -54,4 +66,3 @@ def methods_called_per_test(test_code: str, candidate_methods: Iterable[str], cl
                     results[unittest_id] = acc
 
     return results
-
