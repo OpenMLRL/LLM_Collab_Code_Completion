@@ -268,10 +268,12 @@ def main():
                 dir_val = _expand_jobid_placeholder(str(dir_val))
             except Exception:
                 dir_val = str(dir_val)
+        # Force a concise, informative run name: CE_[num_agents]agents_[strategy]
+        run_name = f"CE_{num_agents}agents_{collab_mode}"
         wandb_config = {
             "project": wandb_cfg.get("project", "classeval"),
             "entity": wandb_cfg.get("entity", None),
-            "name": wandb_cfg.get("name", f"classeval_{collab_mode}_{model_short}"),
+            "name": run_name,
             "dir": dir_val,
             "tags": ["classeval", collab_mode.lower(), f"agents_{num_agents}"],
         }

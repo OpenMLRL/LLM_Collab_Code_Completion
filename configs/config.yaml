@@ -36,7 +36,6 @@ wandb:
   enabled: true
   project: classeval
   entity: null
-  name: classeval_run
   output_dir: /projects/bevi/tchen19/output/CE/[jobid]/wandb
 
 output:
