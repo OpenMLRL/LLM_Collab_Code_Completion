@@ -375,9 +375,9 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             syntax_ok = bool(run_res.get("syntax_ok", False))
             syntax_score = 2.0 if syntax_ok else 0.0
 
-            print('=' * 20)
-            print(run_res)
-            print('=' * 20)
+            # print('=' * 20)
+            # print(run_res)
+            # print('=' * 20)
 
             tests_run = int(run_res.get("testsRun", 0) or 0)
             test_results = run_res.get("test_results", []) or []
@@ -473,6 +473,11 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             lv4 = min(1.0, solved / max(1, num_agents))
 
             total = float(ceb + syntax_score + pass_score + lv4)
+
+            print('=' * 20)
+            print(ceb, syntax_score, pass_score, lv4)
+            print('=' * 20)
+
             rewards.append(total)
 
         return rewards
