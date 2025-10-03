@@ -115,22 +115,32 @@ if __name__ == "__main__":
             pass
     tmp_parent = base_tmp
     try:
+        tmp_parent = os.path.abspath(tmp_parent)
+    except Exception:
+        pass
+    try:
         os.makedirs(tmp_parent, exist_ok=True)
     except Exception:
         pass
 
     with tempfile.TemporaryDirectory(dir=tmp_parent) as tmpdir:
-        py_path = os.path.join(tmpdir, "task_module_payload.py")
+        # Normalize tmpdir and pass relative payload to runner
+        try:
+            tmpdir_abs = os.path.abspath(tmpdir)
+        except Exception:
+            tmpdir_abs = tmpdir
+        payload_name = "task_module_payload.py"
+        py_path = os.path.join(tmpdir_abs, payload_name)
         with open(py_path, "w", encoding="utf-8") as fh:
             fh.write(combined_code)
         try:
             proc = subprocess.run(
-                [sys.executable, "-c", runner_code, py_path],
+                [sys.executable, "-c", runner_code, payload_name],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
                 check=False,
-                cwd=tmpdir,
+                cwd=tmpdir_abs,
             )
         except subprocess.TimeoutExpired:
             return {
@@ -227,25 +237,33 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 method_to_code.update(snippets)
 
             # Preview generations to stdout (captured by job logs and optionally by W&B console)
-            try:
-                preview_limit = 40000
-                task_id = example.get("task_id")
-                header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
-                print(header, flush=True)
-                for aidx, text in enumerate(agent_texts):
-                    # Keep newlines for readability; still cap total chars
-                    snippet = (text or "")[:preview_limit]
-                    if text and len(text) > preview_limit:
-                        snippet += "..."
-                    print(f"[agent_{aidx}] {snippet}", flush=True)
-            except Exception:
-                pass
+            # try:
+            #     preview_limit = 40000
+            #     task_id = example.get("task_id")
+            #     header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
+            #     print(header, flush=True)
+            #     for aidx, text in enumerate(agent_texts):
+            #         # Keep newlines for readability; still cap total chars
+            #         snippet = (text or "")[:preview_limit]
+            #         if text and len(text) > preview_limit:
+            #             snippet += "..."
+            #         print(f"[agent_{aidx}] {snippet}", flush=True)
+            # except Exception:
+            #     pass
 
             combined_code = merge_methods_into_skeleton(
                 skeleton=skeleton,
                 class_name=class_name,
                 method_to_code=method_to_code,
             )
+
+            # print('=' * 20)
+            # print(combined_code)
+            # print('=' * 20)
+
+            # print('=' * 20)
+            # print(test_code)
+            # print('=' * 20)
 
             per_test_methods = methods_called_per_test(
                 test_code=test_code,
@@ -257,10 +275,18 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             syntax_ok = bool(run_res.get("syntax_ok", False))
             syntax_score = 3.0 if syntax_ok else 0.0
 
+            print('=' * 20)
+            print(run_res)
+            print('=' * 20)
+
             tests_run = int(run_res.get("testsRun", 0) or 0)
             passed = int(run_res.get("passed", 0) or 0)
             r = (passed / tests_run) if tests_run > 0 else 0.0
             pass_score = 5.0 * r
+
+            # print('=' * 20)
+            # print(passed, tests_run)
+            # print('=' * 20)
 
             test_results = run_res.get("test_results", []) or []
             num_x_total = 0

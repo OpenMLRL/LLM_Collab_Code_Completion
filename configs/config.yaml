@@ -37,13 +37,13 @@ wandb:
   project: classeval
   entity: null
   name: classeval_run
-  output_dir: ../../../projects/bevi/tchen19/output/CE/[jobid]/wandb
+  output_dir: /projects/bevi/tchen19/output/CE/[jobid]/wandb
 
 output:
   save_final_model: false
   save_path: null
-  tmp_base_dir: ../../../projects/bevi/tchen19/output/CE/[jobid]/tmp
+  tmp_base_dir: /projects/bevi/tchen19/output/CE/[jobid]/tmp
   keep_tmp: true
-  tmp_base_dir: ../../../projects/bevi/tchen19/output/CE/[jobid]/tmp
+  tmp_base_dir: /projects/bevi/tchen19/output/CE/[jobid]/tmp
 
 seed: 42
