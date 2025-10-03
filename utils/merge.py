@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import re
 from typing import Dict, List, Tuple
+try:
+    # Optional formatting to normalize tabs/whitespace and optionally autopep8
+    from LLM_Collab_Module_Completion.utils.formatting import (
+        normalize_code_for_syntax,
+    )
+except Exception:  # pragma: no cover
+    normalize_code_for_syntax = None  # type: ignore
 
 
 def _find_class_block(lines: List[str], class_name: str) -> Tuple[int, int, int]:
@@ -47,8 +54,11 @@ def _find_class_block(lines: List[str], class_name: str) -> Tuple[int, int, int]
 
 
 def _find_method_region(lines: List[str], class_start: int, class_end: int, class_indent: int, method_name: str) -> Tuple[int, int, int]:
-    """Find start (def line) and end (exclusive) of a method region inside the class.
-    Returns (start_idx, end_idx, def_indent_spaces). If not found, returns (-1, -1, class_indent+4).
+    """Find region of a method inside the class, including contiguous decorators above it.
+
+    Returns (start_idx, end_idx, def_indent_spaces), where start_idx points to the first
+    decorator line ("@...") if present, otherwise the 'def <name>(' line. If not found,
+    returns (-1, -1, class_indent+4).
     """
     pat = re.compile(r'^\s*def\s+' + re.escape(method_name) + r'\s*\(')
     start = -1
@@ -58,6 +68,14 @@ def _find_method_region(lines: List[str], class_start: int, class_end: int, clas
         if pat.match(line):
             start = i
             def_indent = len(line) - len(line.lstrip(" "))
+            # Extend region upward to include contiguous decorators directly above
+            j = i - 1
+            while j > class_start:
+                s = lines[j]
+                if not s.lstrip().startswith("@"):
+                    break
+                start = j
+                j -= 1
             break
     if start == -1:
         return -1, -1, class_indent + 4
@@ -122,4 +140,19 @@ def merge_methods_into_skeleton(skeleton: str, class_name: str, method_to_code: 
             continue
         new_block = _indent_block(impl.strip(), dindent)
         lines[s:e] = new_block
-    return "\n".join(lines) + ("\n" if not skeleton.endswith("\n") else "")
+    merged = "\n".join(lines)
+    # Ensure a trailing newline like original behavior
+    if not merged.endswith("\n"):
+        merged = merged + "\n"
+    # Apply lenient normalization/formatting if available
+    try:
+        if normalize_code_for_syntax is not None:
+            formatted = normalize_code_for_syntax(merged, use_autopep8=True)  # type: ignore
+            if isinstance(formatted, str) and formatted:
+                # Preserve trailing newline
+                if not formatted.endswith("\n"):
+                    formatted = formatted + "\n"
+                return formatted
+    except Exception:
+        pass
+    return merged

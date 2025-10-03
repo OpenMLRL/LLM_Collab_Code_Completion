@@ -46,7 +46,7 @@ def run_unittests_with_details(impl_code: str, test_code: str, timeout: int = 40
     """
     combined_code = _combine_code(impl_code, test_code)
 
-    # Syntax check first
+    # Syntax check first (no formatting here; formatting is applied upstream after merge)
     try:
         compile(combined_code, "<combined>", "exec")
         syntax_ok = True
@@ -474,9 +474,9 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             total = float(ceb + syntax_score + pass_score + lv4)
 
-            print('=' * 20)
-            print(ceb, syntax_score, pass_score, lv4)
-            print('=' * 20)
+            # print('=' * 20)
+            # print(ceb, syntax_score, pass_score, lv4)
+            # print('=' * 20)
 
             rewards.append(total)
 
