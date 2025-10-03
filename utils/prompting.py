@@ -40,3 +40,46 @@ def build_agent_prompt(skeleton: str, class_name: str, assigned_methods: List[st
 
     return instr
 
+
+def build_take_job_prompt(
+    skeleton: str,
+    class_name: str,
+    method_names: List[str],
+    num_agents: int,
+) -> str:
+    """Construct a prompt for TAKE_JOB strategy where agents self-select methods.
+
+    Key differences from build_agent_prompt:
+    - No pre-assigned methods. The agent must choose a subset from `method_names`.
+    - Inform the agent of the total number of collaborating agents.
+    - Output must include ONLY Python function definitions for the chosen subset,
+      using names strictly from the provided list.
+    """
+    methods = list(method_names or [])
+    methods_text = "\n".join(f"- {m}" for m in methods) if methods else "(none)"
+    n = int(max(1, num_agents))
+
+    instr = textwrap.dedent(
+        f"""
+        You are one of {n} collaborating agents working to complete the Python class '{class_name}'.
+
+        Below is the full class skeleton, and the list of target methods V that require implementation.
+        You must choose a reasonable subset of methods from V to implement yourself. Coordinate implicitly
+        by aiming for balanced workload (roughly |V|/{n} methods per agent) and minimal overlap with others.
+
+        Target methods (V):
+        {methods_text}
+
+        Important output rules:
+        - Output ONLY Python function definitions for the methods you choose from V.
+        - Do NOT include the class header or any imports.
+        - Do NOT include markdown code fences or any explanatory text.
+        - Each function name must be strictly from the listed target methods.
+
+        SKELETON START
+        {skeleton.strip()}
+        SKELETON END
+        """
+    ).strip()
+
+    return instr

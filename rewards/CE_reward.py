@@ -4,11 +4,19 @@ ClassEval reward computation utilities.
 Implements a subprocess-based unittest runner that returns detailed per-test outcomes,
 and a helper to run tests on combined code (skeleton merged with completions).
 
-Scoring (computed in train_grpo.py reward wrapper):
-- Syntax correctness: +3 if combined code compiles
-- Pass ratio r: +5 * r
-- Collaboration: 2 * (sum_test x * [test passed]) / (sum_test x)
-  where x is the number of distinct agents involved in methods called by that test.
+Scoring (updated CEB design):
+- lv1 CEB (3 pts):
+  Coverage/Overlap/Balance on self-selected method sets A_i across agents.
+- lv2 Syntax (2 pts):
+  +2 if combined code compiles (slightly lenient by design).
+- lv3 Tests (4 pts):
+  4 * (sum_test x * [test passed]) / (sum_test x),
+  where x is the number of agents involved for that test. For TAKE_JOB, x is the
+  number of agents whose chosen sets intersect the test's used methods. Otherwise,
+  x is number of distinct assigned agents for the used methods.
+- lv4 Components (1 pt):
+  For each connected component in the class method-call graph, if it is solved by a
+  single agent, add 1/num_agents. Total capped at 1.0.
 """
 
 from __future__ import annotations
@@ -18,7 +26,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 import os
 
 
@@ -198,9 +206,85 @@ from LLM_Collab_Module_Completion.utils.merge import merge_methods_into_skeleton
 from LLM_Collab_Module_Completion.utils.test_analysis import methods_called_per_test
 
 
+def _compute_call_graph_components(source_code: str, class_name: str, methods: Set[str]) -> List[Set[str]]:
+    """Build undirected connected components of method-call graph within the class.
+
+    Edges between methods u-v if method u contains a call to v (e.g., self.v(...)).
+    Only consider methods within the provided `methods` set.
+    Returns a list of components (each as a set of method names).
+    """
+    comps: List[Set[str]] = []
+    if not source_code or not class_name or not methods:
+        return comps
+    try:
+        import ast
+    except Exception:
+        return comps
+    try:
+        tree = ast.parse(source_code)
+    except Exception:
+        return comps
+
+    # Locate class
+    target = None
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            target = node
+            break
+    if target is None:
+        return comps
+
+    # Build adjacency
+    adj: Dict[str, Set[str]] = {m: set() for m in methods}
+
+    def collect_calls(fn: "ast.FunctionDef") -> Set[str]:
+        called: Set[str] = set()
+        for ch in ast.walk(fn):
+            if isinstance(ch, ast.Call):
+                f = ch.func
+                # self.method(...) or obj.method(...)
+                if isinstance(f, ast.Attribute):
+                    name = f.attr
+                    if name in methods:
+                        called.add(name)
+                # direct function call (unlikely in class method context)
+        return called
+
+    for item in target.body:
+        if isinstance(item, (ast.FunctionDef,)):
+            src = item.name
+            if src not in methods:
+                continue
+            outs = collect_calls(item)
+            for dst in outs:
+                if dst in methods and dst != src:
+                    adj[src].add(dst)
+                    adj[dst].add(src)
+
+    # Connected components on adjacency
+    seen: Set[str] = set()
+    for m in methods:
+        if m in seen:
+            continue
+        stack = [m]
+        comp: Set[str] = set()
+        while stack:
+            u = stack.pop()
+            if u in seen:
+                continue
+            seen.add(u)
+            comp.add(u)
+            for v in adj.get(u, set()):
+                if v not in seen:
+                    stack.append(v)
+        if comp:
+            comps.append(comp)
+    return comps
+
+
 def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]:
     """Return a reward function that merges per-agent completions, runs tests,
-    and computes the ClassEval reward (syntax + pass ratio + collaboration).
+    and computes reward (CEB lv1 + syntax lv2 + tests lv3 + components lv4).
     """
 
     def reward_wrapper(*agent_completions, batch_items=None, prompts=None):
@@ -225,6 +309,8 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             method_to_code: Dict[str, str] = {}
             agent_texts: List[str] = []
+            # Per-agent chosen set A_i (from completions), always parsed against full V
+            A_sets: List[Set[str]] = []
             for agent_idx in range(num_agents):
                 comp_text = ""
                 try:
@@ -232,9 +318,17 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 except Exception:
                     comp_text = ""
                 agent_texts.append(comp_text)
-                assigned = [m for m, a in partition.items() if a == agent_idx]
-                snippets = extract_method_snippets(comp_text or "", allowed_methods=set(assigned))
-                method_to_code.update(snippets)
+                # Parse against full V to get chosen set
+                parsed_all = extract_method_snippets(comp_text or "", allowed_methods=set(method_names))
+                A_sets.append(set(parsed_all.keys()))
+                # For merging into candidate code, honor strategy behavior
+                if getattr(strategy, "self_select", False):
+                    allowed = set(method_names)
+                else:
+                    allowed = {m for m, a in partition.items() if a == agent_idx}
+                if allowed:
+                    snippets = extract_method_snippets(comp_text or "", allowed_methods=allowed)
+                    method_to_code.update(snippets)
 
             # Preview generations to stdout (captured by job logs and optionally by W&B console)
             # try:
@@ -271,24 +365,23 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 class_name=class_name,
             )
 
+            # Special case: if any agent didn't choose any method and n <= k, total reward is 0
+            k = len(method_names)
+            if any(len(s) == 0 for s in A_sets) and num_agents <= max(0, k):
+                rewards.append(0.0)
+                continue
+
             run_res = run_unittests_with_details(combined_code, test_code)
             syntax_ok = bool(run_res.get("syntax_ok", False))
-            syntax_score = 3.0 if syntax_ok else 0.0
+            syntax_score = 2.0 if syntax_ok else 0.0
 
             print('=' * 20)
             print(run_res)
             print('=' * 20)
 
             tests_run = int(run_res.get("testsRun", 0) or 0)
-            passed = int(run_res.get("passed", 0) or 0)
-            r = (passed / tests_run) if tests_run > 0 else 0.0
-            pass_score = 5.0 * r
-
-            # print('=' * 20)
-            # print(passed, tests_run)
-            # print('=' * 20)
-
             test_results = run_res.get("test_results", []) or []
+            # Compute lv3 using weighted pass by x
             num_x_total = 0
             num_x_passed = 0
             for tr in test_results:
@@ -297,16 +390,90 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 used = per_test_methods.get(t_id, set())
                 if not used:
                     continue
-                agents_involved = {partition.get(m, -1) for m in used if m in partition}
-                agents_involved.discard(-1)
-                x = len(agents_involved)
+                if getattr(strategy, "self_select", False):
+                    # Count agents that chose any used method
+                    x = sum(1 for s in A_sets if s & used)
+                else:
+                    agents_involved = {partition.get(m, -1) for m in used if m in partition}
+                    agents_involved.discard(-1)
+                    x = len(agents_involved)
                 if x > 0:
                     num_x_total += x
                     if outcome == "passed":
                         num_x_passed += x
+            pass_score = (4.0 * (num_x_passed / num_x_total)) if num_x_total > 0 else 0.0
 
-            collab = (2.0 * (num_x_passed / num_x_total)) if num_x_total > 0 else 0.0
-            rewards.append(float(syntax_score + pass_score + collab))
+            # print('=' * 20)
+            # print(passed, tests_run)
+            # print('=' * 20)
+
+            # lv1: CEB (Coverage, 1-OverlapPenalty, Balance)
+            V: Set[str] = set(method_names)
+            k = len(V)
+            n = max(1, num_agents)
+            if k > 0:
+                # Coverage
+                union_size = len(set().union(*A_sets)) if A_sets else 0
+                coverage = (union_size / k) if k > 0 else 0.0
+                # Overlap penalty
+                counts: Dict[str, int] = {m: 0 for m in V}
+                for s in A_sets:
+                    for m in s:
+                        if m in counts:
+                            counts[m] += 1
+                overlap_pen = (sum(max(0, counts[m] - 1) for m in V) / k) if k > 0 else 0.0
+                # Balance
+                # Capacity C = ceil(eta * k/n), eta in [0.9,1.2], default 1.0
+                try:
+                    eta_env = float(os.environ.get("CEB_ETA", "1.0"))
+                except Exception:
+                    eta_env = 1.0
+                eta = min(1.2, max(0.9, eta_env))
+                import math as _math
+                C = int(_math.ceil(eta * (k / n))) if n > 0 else 0
+                if C <= 0:
+                    balance = 0.0
+                else:
+                    balance = 1.0 - (sum(abs(len(s) - C) for s in A_sets) / (n * C))
+                    balance = max(0.0, min(1.0, balance))
+                # Weights from env or defaults
+                def _w(name: str, default: float) -> float:
+                    try:
+                        v = os.environ.get(name, None)
+                        return float(v) if v is not None else default
+                    except Exception:
+                        return default
+                wc = _w("CEB_WC", 0.5)
+                wo = _w("CEB_WO", 0.3)
+                wb = _w("CEB_WB", 0.2)
+                ssum = wc + wo + wb
+                if ssum <= 0:
+                    wc, wo, wb = 1.0, 0.0, 0.0
+                    ssum = 1.0
+                wc, wo, wb = wc / ssum, wo / ssum, wb / ssum
+                ceb = 3.0 * (wc * coverage + wo * (1.0 - overlap_pen) + wb * balance)
+                ceb = max(0.0, min(3.0, float(ceb)))
+            else:
+                ceb = 0.0
+
+            # lv4: connected components solved by a single agent
+            comps = _compute_call_graph_components(combined_code, class_name, V)
+            solved = 0
+            for comp in comps:
+                if not comp:
+                    continue
+                if getattr(strategy, "self_select", False):
+                    if any(comp.issubset(s) for s in A_sets):
+                        solved += 1
+                else:
+                    agents_involved = {partition.get(m, -1) for m in comp if m in partition}
+                    agents_involved.discard(-1)
+                    if len(agents_involved) == 1:
+                        solved += 1
+            lv4 = min(1.0, solved / max(1, num_agents))
+
+            total = float(ceb + syntax_score + pass_score + lv4)
+            rewards.append(total)
 
         return rewards
 
