@@ -37,6 +37,11 @@ def _combine_code(impl_code: str, test_code: str) -> str:
 def run_unittests_with_details(impl_code: str, test_code: str, timeout: int = 40) -> Dict[str, Any]:
     """Run unittests with a custom TestResult that records per-test outcomes.
 
+    Behavior:
+    - First performs a syntax check on the merged code (implementation + tests).
+    - If syntax fails, returns immediately without launching the subprocess test runner.
+    - Otherwise, runs tests in an isolated temp directory and reports detailed outcomes.
+
     Returns a JSON-serializable dict including:
     - syntax_ok: bool
     - testsRun, passed, failures, errors, skipped
@@ -50,8 +55,23 @@ def run_unittests_with_details(impl_code: str, test_code: str, timeout: int = 40
     try:
         compile(combined_code, "<combined>", "exec")
         syntax_ok = True
-    except Exception:
+    except Exception as e:
         syntax_ok = False
+        # Early return: do not run tests when syntax is invalid
+        return {
+            "syntax_ok": False,
+            "timeout": False,
+            "success": False,
+            "testsRun": 0,
+            "failures": 0,
+            "errors": 1,
+            "skipped": 0,
+            "passed": 0,
+            "stdout": "",
+            "stderr": f"SyntaxError: {e}",
+            "exit_code": None,
+            "test_results": [],
+        }
 
     runner_code = """
 import json, sys, importlib.util, unittest, io, time, traceback, contextlib
@@ -382,12 +402,6 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 candidate_methods=set(method_names),
                 class_name=class_name,
             )
-
-            # Special case: if any agent didn't choose any method and n <= k, total reward is 0
-            k = len(method_names)
-            if any(len(s) == 0 for s in A_sets) and num_agents <= max(0, k):
-                rewards.append(0.0)
-                continue
 
             run_res = run_unittests_with_details(combined_code, test_code)
             syntax_ok = bool(run_res.get("syntax_ok", False))
