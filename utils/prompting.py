@@ -72,8 +72,9 @@ def build_take_job_prompt(
 
         Important output rules:
         - Output ONLY Python function definitions for the methods you choose from V.
+        - The Python code SHOULD BE fenced in ``` block.
         - Do NOT include the class header or any imports.
-        - Do NOT include markdown code fences or any explanatory text.
+        - Do NOT include any explanatory text.
         - Each function name must be strictly from the listed target methods.
 
         SKELETON START

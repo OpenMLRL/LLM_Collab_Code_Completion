@@ -331,6 +331,23 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     snippets = extract_method_snippets(comp_text or "", allowed_methods=allowed)
                     method_to_code.update(snippets)
 
+            # Preview generations: print each agent's code and number of functions parsed
+            try:
+                preview_limit = 40000
+                task_id = example.get("task_id")
+                header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
+                print(header, flush=True)
+                for aidx, text in enumerate(agent_texts):
+                    funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
+                    # Keep newlines; still cap total chars
+                    snippet = (text or "")[:preview_limit]
+                    if text and len(text) > preview_limit:
+                        snippet += "..."
+                    print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
+                    print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
+            except Exception:
+                pass
+
             # Preview generations to stdout (captured by job logs and optionally by W&B console)
             # try:
             #     preview_limit = 40000

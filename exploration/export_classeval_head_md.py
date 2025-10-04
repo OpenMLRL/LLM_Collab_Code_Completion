@@ -14,7 +14,7 @@ from typing import Any, Mapping, Sequence, Optional
 
 
 DATASET_NAME = "FudanSELab/ClassEval"
-NUM_SAMPLES = 10
+NUM_SAMPLES = 100
 
 
 def _choose_split(ds_or_dict: Any) -> Any:

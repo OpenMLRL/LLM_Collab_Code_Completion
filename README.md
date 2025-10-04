@@ -10,3 +10,5 @@ https://huggingface.co/datasets/FudanSELab/ClassEval
 conda activate comlrl
 conda install -c conda-forge pypdf2 gensim openpyxl python-docx
 ```
+
+pytest

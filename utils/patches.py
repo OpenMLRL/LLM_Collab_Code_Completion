@@ -27,11 +27,18 @@ def patch_trainer_generation_for_memory() -> None:
     except Exception:
         return
 
-    def wrapped(self, agent, batch_items, agent_idx=0, num_return_sequences=1, max_new_tokens=128, **kwargs):
+    def wrapped(self, agent, batch_items, agent_idx=0, num_return_sequences=1, max_new_tokens=None, **kwargs):
         try:
             kwargs.setdefault("output_scores", False)
             kwargs.setdefault("use_cache", False)
             import torch as _torch  # local import to avoid hard dependency at import time
+            # Resolve max_new_tokens from trainer args when not explicitly provided
+            eff_max_new = max_new_tokens
+            if eff_max_new is None:
+                try:
+                    eff_max_new = int(getattr(self.args, "max_new_tokens", 512))
+                except Exception:
+                    eff_max_new = 512
             with _torch.no_grad():
                 return orig(
                     self,
@@ -39,7 +46,7 @@ def patch_trainer_generation_for_memory() -> None:
                     batch_items,
                     agent_idx=agent_idx,
                     num_return_sequences=num_return_sequences,
-                    max_new_tokens=max_new_tokens,
+                    max_new_tokens=eff_max_new,
                     **kwargs,
                 )
         except Exception:
@@ -49,7 +56,7 @@ def patch_trainer_generation_for_memory() -> None:
                 batch_items,
                 agent_idx=agent_idx,
                 num_return_sequences=num_return_sequences,
-                max_new_tokens=max_new_tokens,
+                max_new_tokens=(max_new_tokens if max_new_tokens is not None else getattr(self.args, "max_new_tokens", 512)),
                 **kwargs,
             )
 
@@ -135,4 +142,3 @@ def apply_default_patches(cfg: Dict[str, Any] | None = None) -> None:
         patch_trainer_generation_for_memory()
     if gates.get("single_agent_returns", True):
         patch_single_agent_returns()
-
