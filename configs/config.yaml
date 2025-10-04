@@ -23,10 +23,15 @@ trainer:
   save_steps: 200
   num_generations: 4
   # Per-agent generation cap; increase if outputs truncate.
-  max_new_tokens: 700
+  max_new_tokens: 512
   temperature: 0.5
   top_p: 0.90
   num_turns: 1
+  # PPO-related (CoMLRL MAGRPO) options
+  # Whether to normalize advantages when updating policy
+  normalize_advantage: true
+  # Clipping coefficient (a.k.a. epsilon clip). Set null to use library default.
+  epsilon_clip: 8
 
 reward_processor:
   enabled: false

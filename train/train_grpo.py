@@ -259,6 +259,13 @@ def main():
 
     # Trainer arguments and formatter/reward
     magrpo_args = get_trainer_args(cfg)
+    # Debug-print to verify PPO options are threaded into MAGRPOConfig
+    try:
+        na = getattr(magrpo_args, "normalize_advantage", None)
+        ec = getattr(magrpo_args, "epsilon_clip", None)
+        print(f"[train] MAGRPOConfig opts: normalize_advantage={na} epsilon_clip={ec}")
+    except Exception:
+        pass
     formatters = build_agent_formatters(strategy)
     reward_func = get_reward_function(strategy=strategy, num_agents=num_agents)
 
