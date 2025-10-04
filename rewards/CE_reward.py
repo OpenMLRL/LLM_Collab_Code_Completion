@@ -204,6 +204,7 @@ from LLM_Collab_Module_Completion.utils.data import (
 from LLM_Collab_Module_Completion.utils.parse_completion import extract_method_snippets
 from LLM_Collab_Module_Completion.utils.merge import merge_methods_into_skeleton
 from LLM_Collab_Module_Completion.utils.test_analysis import methods_called_per_test
+from LLM_Collab_Module_Completion.loggers.reward_logger import RewardLogger
 
 
 def _compute_call_graph_components(source_code: str, class_name: str, methods: Set[str]) -> List[Set[str]]:
@@ -473,6 +474,26 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             lv4 = min(1.0, solved / max(1, num_agents))
 
             total = float(ceb + syntax_score + pass_score + lv4)
+
+            # Log per-level rewards to wandb during evaluation (phase=='eval')
+            try:
+                phase = str(example.get("phase", "")).lower() if isinstance(example, dict) else ""
+            except Exception:
+                phase = ""
+            if phase == "eval":
+                try:
+                    RewardLogger.log_ce_levels(
+                        ceb=ceb,
+                        syntax=syntax_score,
+                        tests=pass_score,
+                        components=lv4,
+                        total=total,
+                        step=None,
+                        commit=False,
+                        prefix="eval/ce_reward",
+                    )
+                except Exception:
+                    pass
 
             print('=' * 20)
             print(num_x_passed, num_x_total)

@@ -163,6 +163,12 @@ def main():
         return
 
     train_ds, eval_ds = dataset_train_eval_split(ds_all, split_ratio=split_ratio, seed=seed)
+    # Tag datasets with phase so reward logger can distinguish eval vs. train
+    try:
+        train_ds = train_ds.map(lambda _: {"phase": "train"})
+        eval_ds = eval_ds.map(lambda _: {"phase": "eval"})
+    except Exception:
+        pass
 
     # Optional: set temp base dir and keep flag for unit test runner
     tmp_base = None
