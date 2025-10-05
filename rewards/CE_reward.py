@@ -364,7 +364,28 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     if text and len(text) > preview_limit:
                         snippet += "..."
                     print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
-                    print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
+                    # print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
+            except Exception:
+                pass
+
+            # If any agent produced zero functions (funcs_cnt == 0),
+            # short-circuit and assign 0 reward for this sample.
+            try:
+                if any((len(s) if s is not None else 0) == 0 for s in A_sets):
+                    print("[reward] zero funcs detected; reward=0, skip scoring", flush=True)
+                    rewards.append(0.0)
+                    continue
+            except Exception:
+                # In case of unexpected structure, fall back to normal flow
+                pass
+
+            # If any agent generated all class methods, also short-circuit to 0.
+            try:
+                V_all = set(method_names)
+                if len(V_all) > 0 and any((s is not None) and s.issuperset(V_all) for s in A_sets):
+                    print("[reward] full class by one agent; reward=0, skip scoring", flush=True)
+                    rewards.append(0.0)
+                    continue
             except Exception:
                 pass
 
@@ -475,9 +496,9 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                         return float(v) if v is not None else default
                     except Exception:
                         return default
-                wc = _w("CEB_WC", 0.5)
+                wc = _w("CEB_WC", 0.4)
                 wo = _w("CEB_WO", 0.3)
-                wb = _w("CEB_WB", 0.2)
+                wb = _w("CEB_WB", 0.3)
                 ssum = wc + wo + wb
                 if ssum <= 0:
                     wc, wo, wb = 1.0, 0.0, 0.0
@@ -527,7 +548,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     pass
 
             print('=' * 20)
-            print(num_x_passed, num_x_total)
+            # print(num_x_passed, num_x_total)
             print(ceb, syntax_score, pass_score, lv4)
             print('=' * 20)
 

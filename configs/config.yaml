@@ -8,7 +8,7 @@ model:
 
 data:
   dataset_name: FudanSELab/ClassEval
-  split_ratio: 0.8  # train/eval split ratio
+  split_ratio: 0.7  # train/eval split ratio
 
 collab:
   mode: TAKE_JOB           # ONE | RAND_PARTITION | TAKE_JOB
@@ -31,7 +31,7 @@ trainer:
   # Whether to normalize advantages when updating policy
   normalize_advantage: true
   # Clipping coefficient (a.k.a. epsilon clip). Set null to use library default.
-  epsilon_clip: 8
+  epsilon_clip: 20
 
 reward_processor:
   enabled: false
