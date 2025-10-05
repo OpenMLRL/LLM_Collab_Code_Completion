@@ -57,15 +57,19 @@ def build_take_job_prompt(
     """
     methods = list(method_names or [])
     methods_text = "\n".join(f"- {m}" for m in methods) if methods else "(none)"
+    # Build a set-style representation of the target methods to inline via {curly braces}
+    v_braced = "{" + ", ".join(methods) + "}" if methods else "{}"
     n = int(max(1, num_agents))
+    total_methods = len(methods)
+    target_count = (total_methods + n - 1) // n if total_methods > 0 else 0
 
     instr = textwrap.dedent(
         f"""
         You are one of {n} collaborating agents tasked with implementing the Python class '{class_name}'.
 
-        Below is the full class skeleton and the set V of target methods that require implementation. Choose a **non-empty, proper subset** of V (i.e., not all of V), aiming for roughly |V|/{n} methods to balance workload and avoid overlap.
+        Below is the full class skeleton and the set {v_braced} of target methods that require implementation. Choose a **non-empty, proper subset** of {v_braced} (i.e., not all of {v_braced}), aiming for roughly {target_count} methods to balance workload and avoid overlap.
 
-        Target methods (V):
+        Target methods (Total of {total_methods}):
         {methods_text}
 
         Important output rules:
@@ -74,7 +78,7 @@ def build_take_job_prompt(
         - **Do not** output the class header, any imports, or any text outside the code block.
         - Use the **exact** signatures from the skeleton: names, parameters, defaults, type hints, and any decorators (@staticmethod/@classmethod).
         - Implement real, runnable logic; **no** `pass`, `...`, `TODO`, or placeholder returns.
-        - Function names must be **only** from V; prefer the order they appear in V.
+        - Function names must be **only** from {v_braced}; prefer the order they appear in {v_braced}.
         - Any helper logic must live **inside** the selected methods; do not add new top-level functions/classes/fields.
 
         SKELETON START

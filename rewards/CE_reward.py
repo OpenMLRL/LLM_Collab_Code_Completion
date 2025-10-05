@@ -364,7 +364,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     if text and len(text) > preview_limit:
                         snippet += "..."
                     print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
-                    # print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
+                    print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
             except Exception:
                 pass
 
