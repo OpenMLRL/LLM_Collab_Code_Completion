@@ -61,21 +61,21 @@ def build_take_job_prompt(
 
     instr = textwrap.dedent(
         f"""
-        You are one of {n} collaborating agents working to complete the Python class '{class_name}'.
+        You are one of {n} collaborating agents tasked with implementing the Python class '{class_name}'.
 
-        Below is the full class skeleton, and the list of target methods V that require implementation.
-        You must choose a reasonable subset of methods from V to implement yourself. Coordinate implicitly
-        by aiming for balanced workload (roughly |V|/{n} methods per agent) and minimal overlap with others.
+        Below is the full class skeleton and the set V of target methods that require implementation. Choose a **non-empty, proper subset** of V (i.e., not all of V), aiming for roughly |V|/{n} methods to balance workload and avoid overlap.
 
         Target methods (V):
         {methods_text}
 
         Important output rules:
-        - Output ONLY Python function definitions for the methods you choose from V.
-        - The Python code SHOULD BE fenced in ``` block.
-        - Do NOT include the class header or any imports.
-        - Do NOT include any explanatory text.
-        - Each function name must be strictly from the listed target methods.
+        - Output **only** the chosen methods as Python function definitions **with full bodies**.
+        - Put **all** functions in **one** fenced code block: ``` ... ```
+        - **Do not** output the class header, any imports, or any text outside the code block.
+        - Use the **exact** signatures from the skeleton: names, parameters, defaults, type hints, and any decorators (@staticmethod/@classmethod).
+        - Implement real, runnable logic; **no** `pass`, `...`, `TODO`, or placeholder returns.
+        - Function names must be **only** from V; prefer the order they appear in V.
+        - Any helper logic must live **inside** the selected methods; do not add new top-level functions/classes/fields.
 
         SKELETON START
         {skeleton.strip()}
