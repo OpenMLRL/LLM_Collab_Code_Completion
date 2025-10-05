@@ -380,14 +380,14 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 pass
 
             # If any agent generated all class methods, also short-circuit to 0.
-            try:
-                V_all = set(method_names)
-                if len(V_all) > 0 and any((s is not None) and s.issuperset(V_all) for s in A_sets):
-                    print("[reward] full class by one agent; reward=0, skip scoring", flush=True)
-                    rewards.append(0.0)
-                    continue
-            except Exception:
-                pass
+            # try:
+            #     V_all = set(method_names)
+            #     if len(V_all) > 0 and any((s is not None) and s.issuperset(V_all) for s in A_sets):
+            #         print("[reward] full class by one agent; reward=0, skip scoring", flush=True)
+            #         rewards.append(0.0)
+            #         continue
+            # except Exception:
+            #     pass
 
             # Preview generations to stdout (captured by job logs and optionally by W&B console)
             # try:
