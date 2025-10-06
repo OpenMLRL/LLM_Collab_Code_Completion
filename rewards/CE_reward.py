@@ -4,19 +4,16 @@ ClassEval reward computation utilities.
 Implements a subprocess-based unittest runner that returns detailed per-test outcomes,
 and a helper to run tests on combined code (skeleton merged with completions).
 
-Scoring (updated CEB design):
-- lv1 CEB (3 pts):
-  Coverage/Overlap/Balance on self-selected method sets A_i across agents.
-- lv2 Syntax (2 pts):
-  +2 if combined code compiles (slightly lenient by design).
-- lv3 Tests (4 pts):
-  4 * (sum_test x * [test passed]) / (sum_test x),
-  where x is the number of agents involved for that test. For TAKE_JOB, x is the
-  number of agents whose chosen sets intersect the test's used methods. Otherwise,
-  x is number of distinct assigned agents for the used methods.
-- lv4 Components (1 pt):
-  For each connected component in the class method-call graph, if it is solved by a
-  single agent, add 1/num_agents. Total capped at 1.0.
+Scoring (redesigned):
+- Let V be the total number of methods in the class.
+- lv1 (coverage): let x be the size of the union of all agents' selected method sets; score = 2 * (x / V).
+  Special case: if (x / V) < 1/2, total reward = 0 for this sample.
+- lv2 (overlap): let x be the total overlap count across methods (sum over m of max(0, count(m) - 1));
+  score = 1 - (x / V). Special case: if x > V + 1, total reward = 0 for this sample.
+- lv3 (balance): let N be the number of agents, and s_i the number of methods chosen by agent i.
+  Target t = V/N, MAD = (1/N) * sum_i |s_i - t|, MAD_max = (2V/N) * (1 - 1/N).
+  Score R_bal = 2 * max(0, 1 - MAD / (MAD_max + eps)).
+Total reward = lv1 + lv2 + lv3.
 """
 
 from __future__ import annotations
@@ -222,8 +219,6 @@ from LLM_Collab_Module_Completion.utils.data import (
     extract_incomplete_methods,
 )
 from LLM_Collab_Module_Completion.utils.parse_completion import extract_method_snippets
-from LLM_Collab_Module_Completion.utils.merge import merge_methods_into_skeleton
-from LLM_Collab_Module_Completion.utils.test_analysis import methods_called_per_test
 from LLM_Collab_Module_Completion.loggers.reward_logger import RewardLogger
 
 
@@ -304,8 +299,16 @@ def _compute_call_graph_components(source_code: str, class_name: str, methods: S
 
 
 def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]:
-    """Return a reward function that merges per-agent completions, runs tests,
-    and computes reward (CEB lv1 + syntax lv2 + tests lv3 + components lv4).
+    """Return a reward function implementing the redesigned lv1+lv2+lv3 scoring.
+
+    - V = total number of class methods requiring implementation
+    - lv1 = 2 * (|union of chosen methods across agents| / V)
+      Special case: if coverage < 1/2 then reward = 0 for this sample
+    - lv2 = 1 - (overlap_total / V), where overlap_total = sum_m max(0, count(m) - 1)
+      Special case: if overlap_total > V + 1 then reward = 0 for this sample
+    - lv3 = balance based on MAD of |A_i| around t = V/N, with MAD_max = (2V/N)*(1 - 1/N),
+      R_bal = 2 * max(0, 1 - MAD/(MAD_max + eps))
+    Total reward = lv1 + lv2 + lv3
     """
 
     def reward_wrapper(*agent_completions, batch_items=None, prompts=None):
@@ -328,9 +331,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             partition = strategy.partition(example)
 
-            method_to_code: Dict[str, str] = {}
             agent_texts: List[str] = []
-            # Per-agent chosen set A_i (from completions), always parsed against full V
             A_sets: List[Set[str]] = []
             for agent_idx in range(num_agents):
                 comp_text = ""
@@ -339,17 +340,72 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 except Exception:
                     comp_text = ""
                 agent_texts.append(comp_text)
-                # Parse against full V to get chosen set
                 parsed_all = extract_method_snippets(comp_text or "", allowed_methods=set(method_names))
                 A_sets.append(set(parsed_all.keys()))
-                # For merging into candidate code, honor strategy behavior
-                if getattr(strategy, "self_select", False):
-                    allowed = set(method_names)
-                else:
-                    allowed = {m for m, a in partition.items() if a == agent_idx}
-                if allowed:
-                    snippets = extract_method_snippets(comp_text or "", allowed_methods=allowed)
-                    method_to_code.update(snippets)
+
+            
+
+            # New reward rules (lv1 + lv2)
+            V_set: Set[str] = set(method_names)
+            V = len(V_set)
+            if V <= 0:
+                rewards.append(0.0)
+                continue
+
+            # lv1: 2 * (|union| / V); if coverage < 1/2 => reward 0
+            union_size = len(set().union(*A_sets)) if A_sets else 0
+            coverage_ratio = union_size / V
+            if coverage_ratio < 0.5:
+                rewards.append(0.0)
+                continue
+            lv1 = 2.0 * coverage_ratio
+
+            # lv2: 1 - (overlap_x / V); if overlap_x > V + 1 => reward 0
+            counts: Dict[str, int] = {m: 0 for m in V_set}
+            for s in A_sets:
+                for m in s:
+                    if m in counts:
+                        counts[m] += 1
+            overlap_x = sum(max(0, c - 1) for c in counts.values())
+            if overlap_x > V + 1:
+                rewards.append(0.0)
+                continue
+            lv2 = 1.0 - (overlap_x / V)
+
+            # lv3: balance via MAD of chosen set sizes around t = V/N
+            N = max(1, int(num_agents))
+            t = V / N
+            s_list = [float(len(s)) for s in A_sets] if A_sets else [0.0] * N
+            mad = (sum(abs(si - t) for si in s_list) / N) if N > 0 else 0.0
+            mad_max = (2.0 * V / N) * (1.0 - 1.0 / N) if N > 0 else 0.0
+            eps = 1e-8
+            lv3 = 2.0 * max(0.0, 1.0 - (mad / (mad_max + eps))) - 2
+
+            total = float(lv1 + lv2 + lv3)
+
+            print('=' * 50)
+            print(lv1, lv2, lv3)
+            print('=' * 50)
+
+            # Optional eval logging (reuse field names for compatibility)
+            try:
+                phase = str(example.get("phase", "")).lower() if isinstance(example, dict) else ""
+            except Exception:
+                phase = ""
+            if phase == "eval":
+                try:
+                    RewardLogger.log_ce_levels(
+                        ceb=lv1,
+                        syntax=lv2,
+                        tests=lv3,
+                        components=0.0,
+                        total=total,
+                        step=None,
+                        commit=False,
+                        prefix="eval/ce_reward",
+                    )
+                except Exception:
+                    pass
 
             # Preview generations: print each agent's code and number of functions parsed
             try:
@@ -359,7 +415,6 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 print(header, flush=True)
                 for aidx, text in enumerate(agent_texts):
                     funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
-                    # Keep newlines; still cap total chars
                     snippet = (text or "")[:preview_limit]
                     if text and len(text) > preview_limit:
                         snippet += "..."
@@ -367,190 +422,6 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
             except Exception:
                 pass
-
-            # If any agent produced zero functions (funcs_cnt == 0),
-            # short-circuit and assign 0 reward for this sample.
-            try:
-                if any((len(s) if s is not None else 0) == 0 for s in A_sets):
-                    print("[reward] zero funcs detected; reward=0, skip scoring", flush=True)
-                    rewards.append(0.0)
-                    continue
-            except Exception:
-                # In case of unexpected structure, fall back to normal flow
-                pass
-
-            # If any agent generated all class methods, also short-circuit to 0.
-            # try:
-            #     V_all = set(method_names)
-            #     if len(V_all) > 0 and any((s is not None) and s.issuperset(V_all) for s in A_sets):
-            #         print("[reward] full class by one agent; reward=0, skip scoring", flush=True)
-            #         rewards.append(0.0)
-            #         continue
-            # except Exception:
-            #     pass
-
-            # Preview generations to stdout (captured by job logs and optionally by W&B console)
-            # try:
-            #     preview_limit = 40000
-            #     task_id = example.get("task_id")
-            #     header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
-            #     print(header, flush=True)
-            #     for aidx, text in enumerate(agent_texts):
-            #         # Keep newlines for readability; still cap total chars
-            #         snippet = (text or "")[:preview_limit]
-            #         if text and len(text) > preview_limit:
-            #             snippet += "..."
-            #         print(f"[agent_{aidx}] {snippet}", flush=True)
-            # except Exception:
-            #     pass
-
-            combined_code = merge_methods_into_skeleton(
-                skeleton=skeleton,
-                class_name=class_name,
-                method_to_code=method_to_code,
-            )
-
-            # print('=' * 20)
-            # print(combined_code)
-            # print('=' * 20)
-
-            # print('=' * 20)
-            # print(test_code)
-            # print('=' * 20)
-
-            per_test_methods = methods_called_per_test(
-                test_code=test_code,
-                candidate_methods=set(method_names),
-                class_name=class_name,
-            )
-
-            run_res = run_unittests_with_details(combined_code, test_code)
-            syntax_ok = bool(run_res.get("syntax_ok", False))
-            syntax_score = 2.0 if syntax_ok else 0.0
-
-            # print('=' * 20)
-            # print(run_res)
-            # print('=' * 20)
-
-            tests_run = int(run_res.get("testsRun", 0) or 0)
-            test_results = run_res.get("test_results", []) or []
-            # Compute lv3 using weighted pass by x
-            num_x_total = 0
-            num_x_passed = 0
-            for tr in test_results:
-                t_id = str(tr.get("id", ""))
-                outcome = str(tr.get("outcome", ""))
-                used = per_test_methods.get(t_id, set())
-                if not used:
-                    continue
-                if getattr(strategy, "self_select", False):
-                    # Count agents that chose any used method
-                    x = sum(1 for s in A_sets if s & used)
-                else:
-                    agents_involved = {partition.get(m, -1) for m in used if m in partition}
-                    agents_involved.discard(-1)
-                    x = len(agents_involved)
-                if x > 0:
-                    num_x_total += x
-                    if outcome == "passed":
-                        num_x_passed += x
-            pass_score = (4.0 * (num_x_passed / num_x_total)) if num_x_total > 0 else 0.0
-
-            # print('=' * 20)
-            # print(passed, tests_run)
-            # print('=' * 20)
-
-            # lv1: CEB (Coverage, 1-OverlapPenalty, Balance)
-            V: Set[str] = set(method_names)
-            k = len(V)
-            n = max(1, num_agents)
-            if k > 0:
-                # Coverage
-                union_size = len(set().union(*A_sets)) if A_sets else 0
-                coverage = (union_size / k) if k > 0 else 0.0
-                # Overlap penalty
-                counts: Dict[str, int] = {m: 0 for m in V}
-                for s in A_sets:
-                    for m in s:
-                        if m in counts:
-                            counts[m] += 1
-                overlap_pen = (sum(max(0, counts[m] - 1) for m in V) / k) if k > 0 else 0.0
-                # Balance
-                # Capacity C = ceil(eta * k/n), eta in [0.9,1.2], default 1.0
-                try:
-                    eta_env = float(os.environ.get("CEB_ETA", "1.0"))
-                except Exception:
-                    eta_env = 1.0
-                eta = min(1.2, max(0.9, eta_env))
-                import math as _math
-                C = int(_math.ceil(eta * (k / n))) if n > 0 else 0
-                if C <= 0:
-                    balance = 0.0
-                else:
-                    balance = 1.0 - (sum(abs(len(s) - C) for s in A_sets) / (n * C))
-                    balance = max(0.0, min(1.0, balance))
-                # Weights from env or defaults
-                def _w(name: str, default: float) -> float:
-                    try:
-                        v = os.environ.get(name, None)
-                        return float(v) if v is not None else default
-                    except Exception:
-                        return default
-                wc = _w("CEB_WC", 0.4)
-                wo = _w("CEB_WO", 0.3)
-                wb = _w("CEB_WB", 0.3)
-                ssum = wc + wo + wb
-                if ssum <= 0:
-                    wc, wo, wb = 1.0, 0.0, 0.0
-                    ssum = 1.0
-                wc, wo, wb = wc / ssum, wo / ssum, wb / ssum
-                ceb = 3.0 * (wc * coverage + wo * (1.0 - overlap_pen) + wb * balance)
-                ceb = max(0.0, min(3.0, float(ceb)))
-            else:
-                ceb = 0.0
-
-            # lv4: connected components solved by a single agent
-            comps = _compute_call_graph_components(combined_code, class_name, V)
-            solved = 0
-            for comp in comps:
-                if not comp:
-                    continue
-                if getattr(strategy, "self_select", False):
-                    if any(comp.issubset(s) for s in A_sets):
-                        solved += 1
-                else:
-                    agents_involved = {partition.get(m, -1) for m in comp if m in partition}
-                    agents_involved.discard(-1)
-                    if len(agents_involved) == 1:
-                        solved += 1
-            lv4 = min(1.0, solved / max(1, num_agents))
-
-            total = float(ceb + syntax_score + pass_score + lv4)
-
-            # Log per-level rewards to wandb during evaluation (phase=='eval')
-            try:
-                phase = str(example.get("phase", "")).lower() if isinstance(example, dict) else ""
-            except Exception:
-                phase = ""
-            if phase == "eval":
-                try:
-                    RewardLogger.log_ce_levels(
-                        ceb=ceb,
-                        syntax=syntax_score,
-                        tests=pass_score,
-                        components=lv4,
-                        total=total,
-                        step=None,
-                        commit=False,
-                        prefix="eval/ce_reward",
-                    )
-                except Exception:
-                    pass
-
-            print('=' * 20)
-            # print(num_x_passed, num_x_total)
-            print(ceb, syntax_score, pass_score, lv4)
-            print('=' * 20)
 
             rewards.append(total)
 
