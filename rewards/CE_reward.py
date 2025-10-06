@@ -388,7 +388,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             msd = (sum((si - t) ** 2 for si in s_list) / N) if N > 0 else 0.0
             msd_max = (1.0 / N) * (V ** 2) * (1.0 - 1.0 / N) if N > 0 else 0.0
             eps = 1e-8
-            lv3 = 4 * max(0.0, 1.0 - (msd / (msd_max + eps))) - 2
+            lv3 = 3 * max(0.0, 1.0 - (msd / (msd_max + eps))) - 1
 
             total = float(lv1 + lv2 + lv3)
 
@@ -417,20 +417,20 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     pass
 
             # Preview generations: print each agent's code and number of functions parsed
-            try:
-                preview_limit = 40000
-                task_id = example.get("task_id")
-                header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
-                print(header, flush=True)
-                for aidx, text in enumerate(agent_texts):
-                    funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
-                    snippet = (text or "")[:preview_limit]
-                    if text and len(text) > preview_limit:
-                        snippet += "..."
-                    print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
-                    print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
-            except Exception:
-                pass
+            # try:
+            #     preview_limit = 40000
+            #     task_id = example.get("task_id")
+            #     header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
+            #     print(header, flush=True)
+            #     for aidx, text in enumerate(agent_texts):
+            #         funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
+            #         snippet = (text or "")[:preview_limit]
+            #         if text and len(text) > preview_limit:
+            #             snippet += "..."
+            #         print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
+            #         print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
+            # except Exception:
+            #     pass
 
             rewards.append(total)
 
