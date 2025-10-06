@@ -344,20 +344,28 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 parsed_all = extract_method_snippets(comp_text or "", allowed_methods=set(method_names))
                 A_sets.append(set(parsed_all.keys()))
 
-            
+            # Early penalty: if any agent generated zero functions, assign -2 and skip
+            try:
+                if any((len(s) if s is not None else 0) == 0 for s in A_sets):
+                    rewards.append(-2.0)
+                    continue
+            except Exception:
+                # fall back to normal flow on unexpected structure
+                pass
+
 
             # New reward rules (lv1 + lv2)
             V_set: Set[str] = set(method_names)
             V = len(V_set)
             if V <= 0:
-                rewards.append(0.0)
+                rewards.append(-2.0)
                 continue
 
             # lv1: 2 * (|union| / V); if coverage < 1/2 => reward 0
             union_size = len(set().union(*A_sets)) if A_sets else 0
             coverage_ratio = union_size / V
             if coverage_ratio < 0.5:
-                rewards.append(0.0)
+                rewards.append(-2.0)
                 continue
             lv1 = 2.0 * coverage_ratio
 
@@ -369,7 +377,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                         counts[m] += 1
             overlap_x = sum(max(0, c - 1) for c in counts.values())
             if overlap_x > V + 1:
-                rewards.append(0.0)
+                rewards.append(-2.0)
                 continue
             lv2 = 1.0 - (overlap_x / V)
 
@@ -380,7 +388,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             msd = (sum((si - t) ** 2 for si in s_list) / N) if N > 0 else 0.0
             msd_max = (1.0 / N) * (V ** 2) * (1.0 - 1.0 / N) if N > 0 else 0.0
             eps = 1e-8
-            lv3 = 4.0 * max(0.0, 1.0 - (msd / (msd_max + eps))) - 2
+            lv3 = max(0.0, 1.0 - (msd / (msd_max + eps)))
 
             total = float(lv1 + lv2 + lv3)
 
