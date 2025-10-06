@@ -10,9 +10,9 @@ Scoring (redesigned):
   Special case: if (x / V) < 1/2, total reward = 0 for this sample.
 - lv2 (overlap): let x be the total overlap count across methods (sum over m of max(0, count(m) - 1));
   score = 1 - (x / V). Special case: if x > V + 1, total reward = 0 for this sample.
-- lv3 (balance): let N be the number of agents, and s_i the number of methods chosen by agent i.
-  Target t = V/N, MAD = (1/N) * sum_i |s_i - t|, MAD_max = (2V/N) * (1 - 1/N).
-  Score R_bal = 2 * max(0, 1 - MAD / (MAD_max + eps)).
+- lv3 (balance via variance): let N be the number of agents, and s_i the number of methods chosen by agent i.
+  Target t = V/N, MSD = (1/N) * Σ (s_i - t)^2, MSD_max = (1/N) * V^2 * (1 - 1/N).
+  Score R_bal = max(0, 1 - MSD / (MSD_max + eps)).
 Total reward = lv1 + lv2 + lv3.
 """
 
@@ -306,8 +306,9 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
       Special case: if coverage < 1/2 then reward = 0 for this sample
     - lv2 = 1 - (overlap_total / V), where overlap_total = sum_m max(0, count(m) - 1)
       Special case: if overlap_total > V + 1 then reward = 0 for this sample
-    - lv3 = balance based on MAD of |A_i| around t = V/N, with MAD_max = (2V/N)*(1 - 1/N),
-      R_bal = 2 * max(0, 1 - MAD/(MAD_max + eps))
+    - lv3 = balance based on variance of |A_i| around t = V/N, with
+      MSD = (1/N) * Σ (s_i - t)^2 and MSD_max = (1/N) * V^2 * (1 - 1/N),
+      R_bal = max(0, 1 - MSD/(MSD_max + eps))
     Total reward = lv1 + lv2 + lv3
     """
 
@@ -372,14 +373,14 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 continue
             lv2 = 1.0 - (overlap_x / V)
 
-            # lv3: balance via MAD of chosen set sizes around t = V/N
+            # lv3: balance via MSD (variance) of chosen set sizes around t = V/N
             N = max(1, int(num_agents))
             t = V / N
             s_list = [float(len(s)) for s in A_sets] if A_sets else [0.0] * N
-            mad = (sum(abs(si - t) for si in s_list) / N) if N > 0 else 0.0
-            mad_max = (2.0 * V / N) * (1.0 - 1.0 / N) if N > 0 else 0.0
+            msd = (sum((si - t) ** 2 for si in s_list) / N) if N > 0 else 0.0
+            msd_max = (1.0 / N) * (V ** 2) * (1.0 - 1.0 / N) if N > 0 else 0.0
             eps = 1e-8
-            lv3 = 4.0 * max(0.0, 1.0 - (mad / (mad_max + eps))) - 2
+            lv3 = 4.0 * max(0.0, 1.0 - (msd / (msd_max + eps))) - 2
 
             total = float(lv1 + lv2 + lv3)
 
