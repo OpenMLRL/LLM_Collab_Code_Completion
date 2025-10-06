@@ -379,7 +379,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             mad = (sum(abs(si - t) for si in s_list) / N) if N > 0 else 0.0
             mad_max = (2.0 * V / N) * (1.0 - 1.0 / N) if N > 0 else 0.0
             eps = 1e-8
-            lv3 = 2.0 * max(0.0, 1.0 - (mad / (mad_max + eps))) - 2
+            lv3 = 4.0 * max(0.0, 1.0 - (mad / (mad_max + eps))) - 2
 
             total = float(lv1 + lv2 + lv3)
 
