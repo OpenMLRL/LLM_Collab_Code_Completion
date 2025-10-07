@@ -25,7 +25,7 @@ import tempfile
 import textwrap
 from typing import Any, Dict, List, Optional, Set, Tuple
 import os
-
+import math
 
 def _combine_code(impl_code: str, test_code: str) -> str:
     return (impl_code or "").rstrip() + "\n\n" + (test_code or "").lstrip()
@@ -381,14 +381,20 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 continue
             lv2 = 1.0 - (overlap_x / V)
 
-            # lv3: balance via MSD (variance) of chosen set sizes around t = V/N
+            # lv3: balance via entropy of chosen set sizes
             N = max(1, int(num_agents))
-            t = V / N
             s_list = [float(len(s)) for s in A_sets] if A_sets else [0.0] * N
-            msd = (sum((si - t) ** 2 for si in s_list) / N) if N > 0 else 0.0
-            msd_max = (1.0 / N) * (V ** 2) * (1.0 - 1.0 / N) if N > 0 else 0.0
-            eps = 1e-8
-            lv3 = 3 * max(0.0, 1.0 - (msd / (msd_max + eps))) - 1
+            total_s = sum(s_list)
+            if total_s > 0:
+                ps = [si / total_s for si in s_list if si > 0]
+                # Entropy H = -sum p_i ln p_i, normalized by ln(N)
+                H = -sum(p * math.log(p) for p in ps)
+                H_norm = (H / math.log(N)) if N > 1 else 1.0
+                H_norm = max(0.0, min(1.0, H_norm))
+                lv3 = 3.0 * H_norm - 1.0
+            else:
+                lv3 = -1.0
+
 
             total = float(lv1 + lv2 + lv3)
 
