@@ -297,6 +297,8 @@ def _compute_call_graph_components(source_code: str, class_name: str, methods: S
             comps.append(comp)
     return comps
 
+# count rate of passing lv1 + lv2
+_count_total, _count_pass = 0, 0
 
 def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]:
     """Return a reward function implementing the redesigned lv1+lv2+lv3 scoring.
@@ -313,6 +315,8 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
     """
 
     def reward_wrapper(*agent_completions, batch_items=None, prompts=None):
+        # Use module-level counters for pass rate tracking
+        global _count_total, _count_pass
         if not agent_completions:
             return []
         batch_size = len(agent_completions[0])
@@ -344,10 +348,13 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 parsed_all = extract_method_snippets(comp_text or "", allowed_methods=set(method_names))
                 A_sets.append(set(parsed_all.keys()))
 
+            INF = 1.0
+            _count_total += 1
+
             # Early penalty: if any agent generated zero functions, assign -2 and skip
             try:
                 if any((len(s) if s is not None else 0) == 0 for s in A_sets):
-                    rewards.append(-2.0)
+                    rewards.append(-INF)
                     continue
             except Exception:
                 # fall back to normal flow on unexpected structure
@@ -358,14 +365,14 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             V_set: Set[str] = set(method_names)
             V = len(V_set)
             if V <= 0:
-                rewards.append(-2.0)
+                rewards.append(-INF)
                 continue
 
             # lv1: 2 * (|union| / V); if coverage < 1/2 => reward 0
             union_size = len(set().union(*A_sets)) if A_sets else 0
             coverage_ratio = union_size / V
             if coverage_ratio < 0.5:
-                rewards.append(-2.0)
+                rewards.append(-INF)
                 continue
             lv1 = 2.0 * coverage_ratio
 
@@ -377,7 +384,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                         counts[m] += 1
             overlap_x = sum(max(0, c - 1) for c in counts.values())
             if overlap_x > V + 1:
-                rewards.append(-2.0)
+                rewards.append(-INF)
                 continue
             lv2 = 1.0 - (overlap_x / V)
 
@@ -393,13 +400,14 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 H_norm = max(0.0, min(1.0, H_norm))
                 lv3 = 3.0 * H_norm - 1.0
             else:
-                lv3 = -1.0
+                lv3 = -INF
 
-
+            _count_pass += 1
             total = float(lv1 + lv2 + lv3)
 
             print('=' * 50)
             print(lv1, lv2, lv3)
+            print(_count_pass / _count_total)
             print('=' * 50)
 
             # Optional eval logging (reuse field names for compatibility)
@@ -423,20 +431,20 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     pass
 
             # Preview generations: print each agent's code and number of functions parsed
-            # try:
-            #     preview_limit = 40000
-            #     task_id = example.get("task_id")
-            #     header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
-            #     print(header, flush=True)
-            #     for aidx, text in enumerate(agent_texts):
-            #         funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
-            #         snippet = (text or "")[:preview_limit]
-            #         if text and len(text) > preview_limit:
-            #             snippet += "..."
-            #         print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
-            #         print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
-            # except Exception:
-            #     pass
+            try:
+                preview_limit = 40000
+                task_id = example.get("task_id")
+                header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
+                print(header, flush=True)
+                for aidx, text in enumerate(agent_texts):
+                    funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
+                    snippet = (text or "")[:preview_limit]
+                    if text and len(text) > preview_limit:
+                        snippet += "..."
+                    print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
+                    print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
+            except Exception:
+                pass
 
             rewards.append(total)
 
