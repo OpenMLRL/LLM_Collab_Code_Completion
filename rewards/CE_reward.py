@@ -388,6 +388,9 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 continue
             lv2 = 1.0 - (overlap_x / V)
 
+            # get bonus after passing lv1, lv2
+            lv_bonus = 0.5
+
             # lv3: balance via entropy of chosen set sizes
             N = max(1, int(num_agents))
             s_list = [float(len(s)) for s in A_sets] if A_sets else [0.0] * N
@@ -398,12 +401,12 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 H = -sum(p * math.log(p) for p in ps)
                 H_norm = (H / math.log(N)) if N > 1 else 1.0
                 H_norm = max(0.0, min(1.0, H_norm))
-                lv3 = 3.0 * H_norm - 1.0
+                lv3 = 2.5 * H_norm
             else:
                 lv3 = -INF
 
             _count_pass += 1
-            total = float(lv1 + lv2 + lv3)
+            total = float(lv1 + lv2 + lv3 + lv_bonus)
 
             print('=' * 50)
             print(lv1, lv2, lv3)
@@ -418,9 +421,9 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             if phase == "eval":
                 try:
                     RewardLogger.log_ce_levels(
-                        ceb=lv1,
-                        syntax=lv2,
-                        tests=lv3,
+                        cover=lv1,
+                        overlap=lv2,
+                        balance=lv3,
                         components=0.0,
                         total=total,
                         step=None,
@@ -436,6 +439,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 task_id = example.get("task_id")
                 header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
                 print(header, flush=True)
+                print(f"total funcs: {V}")
                 for aidx, text in enumerate(agent_texts):
                     funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
                     snippet = (text or "")[:preview_limit]
