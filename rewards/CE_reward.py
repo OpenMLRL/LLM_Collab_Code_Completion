@@ -397,7 +397,9 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                         counts[m] += 1
             overlap_x = sum(max(0, c - 1) for c in counts.values())
             n_agents = max(1, int(num_agents))
-            T_val = math.ceil(((n_agents - 1) * V) / 2.0) + n_agents
+            # T_val = math.ceil(((n_agents - 1) * V) / 2.0) + n_agents
+            T_val = math.ceil(((n_agents - 1) * V) / 2.0)
+
             # Early termination if overlap exceeds T
             if overlap_x > T_val:
                 rewards.append(-INF)
