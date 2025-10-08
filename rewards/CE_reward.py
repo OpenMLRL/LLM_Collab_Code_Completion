@@ -407,14 +407,13 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             # lv_bonus = 0.2
 
             # lv3: balance via entropy of chosen set sizes
-            s_list = [float(int(x)) for x in counts]
-            N = int(num_agents) if num_agents > 0 else 1
-            t = float(V) / float(N)
-            msd = (sum((si - t) ** 2 for si in s_list) / float(N)) if N > 0 else 0.0
-            msd_max = (1.0 / float(N)) * (float(V) ** 2) * (1.0 - 1.0 / float(N)) if N > 0 else 0.0
+            N = max(1, int(num_agents))
+            t = V / N
+            s_list = [float(len(s)) for s in A_sets] if A_sets else [0.0] * N
+            msd = (sum((si - t) ** 2 for si in s_list) / N) if N > 0 else 0.0
+            msd_max = (1.0 / N) * (V ** 2) * (1.0 - 1.0 / N) if N > 0 else 0.0
             eps = 1e-8
-            ratio = 0.0 if msd_max <= 0 else (msd / (msd_max + eps))
-            lv3 = 3.5 * max(0.0, 1.0 - ratio) - 0.5
+            lv3 = 3.5 * max(0.0, 1.0 - (msd / (msd_max + eps))) - 0.5
 
             _count_pass_lv1_2 += 1
             total = float(lv1 + lv2 + lv3)
