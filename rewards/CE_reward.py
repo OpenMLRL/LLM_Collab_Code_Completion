@@ -400,9 +400,9 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 lv2 = -2.0 * INF
 
             if S_total == 2 * V + 1:
-                rewards.append(-1.5)
+                lv2 = -2.0 * INF
             elif S_total == 2 * V + 2:
-                rewards.append(-3)
+                lv2 = -4.0 * INF
             # numerical guard
             # if lv2 > 2.0:
             #     lv2 = 2.0
