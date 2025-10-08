@@ -8,8 +8,13 @@ Scoring (redesigned):
 - Let V be the total number of methods in the class.
 - lv1 (coverage): let x be the size of the union of all agents' selected method sets; score = 2 * (x / V).
   Special case: if (x / V) < 1/2, total reward = 0 for this sample.
-- lv2 (overlap): let x be the total overlap count across methods (sum over m of max(0, count(m) - 1));
-  score = 1 - (x / V). Special case: if x > V + 1, total reward = 0 for this sample.
+- lv2 (overlap): let x be the total overlap count across methods (sum over m of max(0, count(m) - 1)).
+  Let n be the number of agents and define T = ceil(((n - 1) * V) / 2) + n.
+  For x <= V: score = 1 - (x / V) (linear).
+  For V < x <= T: use a concave-down interpolation that accelerates away from V and reaches -2*INF at x = T.
+  A simple choice convenient for training is the scaled power curve:
+    lv2(x) = -2*INF * ((x - V) / (T - V))^p, with p >= 1 (default p=2; override via env `CE_LV2_EXP`).
+  If x > T: terminate this sample with reward = -INF immediately.
 - lv3 (balance via variance): let N be the number of agents, and s_i the number of methods chosen by agent i.
   Target t = V/N, MSD = (1/N) * Σ (s_i - t)^2, MSD_max = (1/N) * V^2 * (1 - 1/N).
   Score R_bal = max(0, 1 - MSD / (MSD_max + eps)).
@@ -306,8 +311,11 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
     - V = total number of class methods requiring implementation
     - lv1 = 2 * (|union of chosen methods across agents| / V)
       Special case: if coverage < 1/2 then reward = 0 for this sample
-    - lv2 = 1 - (overlap_total / V), where overlap_total = sum_m max(0, count(m) - 1)
-      Special case: if overlap_total > V + 1 then reward = 0 for this sample
+    - lv2 = piecewise overlap penalty with concave interpolation beyond V:
+      Let overlap_total = Σ_m max(0, count(m) - 1) and T = ceil(((n-1)*V)/2) + n where n = num_agents.
+        * If overlap_total <= V: lv2 = 1 - (overlap_total / V)
+        * If V < overlap_total <= T: lv2 = -2*INF * ((overlap_total - V) / (T - V))^p, default p=2 (p >= 1)
+        * If overlap_total > T: terminate this sample early with total reward = -INF (=-1)
     - lv3 = balance based on variance of |A_i| around t = V/N, with
       MSD = (1/N) * Σ (s_i - t)^2 and MSD_max = (1/N) * V^2 * (1 - 1/N),
       R_bal = max(0, 1 - MSD/(MSD_max + eps))
@@ -354,7 +362,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             # Early penalty: if any agent generated zero functions, assign -2 and skip
             try:
                 if any((len(s) if s is not None else 0) == 0 for s in A_sets):
-                    rewards.append(-INF)
+                    rewards.append(-INF * 2)
                     continue
             except Exception:
                 # fall back to normal flow on unexpected structure
@@ -381,17 +389,41 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             _count_pass_lv1 += 1
 
-            # lv2: 1 - (overlap_x / V); if overlap_x > V + 1 => reward 0
+            # lv2: concave penalty beyond V; reaches -2*INF at T = ceil(((n-1)*V)/2) + n
             counts: Dict[str, int] = {m: 0 for m in V_set}
             for s in A_sets:
                 for m in s:
                     if m in counts:
                         counts[m] += 1
             overlap_x = sum(max(0, c - 1) for c in counts.values())
-            if overlap_x > V * 3/2 + 1:
+            n_agents = max(1, int(num_agents))
+            T_val = math.ceil(((n_agents - 1) * V) / 2.0) + n_agents
+            # Early termination if overlap exceeds T
+            if overlap_x > T_val:
                 rewards.append(-INF)
                 continue
-            lv2 = 1.0 - (overlap_x / V)
+            if overlap_x <= V:
+                lv2 = 1.0 - (overlap_x / V)
+            else:
+                # Concave-down interpolation on (V, T]:
+                #   lv2(x) = -2*INF * ((x - V) / (T - V))^p, p >= 1 (default 2)
+                try:
+                    p = float(os.environ.get("CE_LV2_EXP", "2.0"))
+                    if p < 1:
+                        p = 2.0
+                except Exception:
+                    p = 2.0
+                # Guard against degenerate T==V (no interpolation range)
+                denom = float(T_val - V)
+                if denom <= 0:
+                    lv2 = -2.0 * INF  # fall back to strongest penalty in this band
+                else:
+                    ratio = (float(overlap_x) - float(V)) / denom
+                    if ratio < 0:
+                        ratio = 0.0
+                    elif ratio > 1:
+                        ratio = 1.0
+                    lv2 = -(2.0 * INF) * (ratio ** p)
 
             # get bonus after passing lv1, lv2
             lv_bonus = 0.2
@@ -440,21 +472,21 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     pass
 
             # Preview generations: print each agent's code and number of functions parsed
-            # try:
-            #     preview_limit = 40000
-            #     task_id = example.get("task_id")
-            #     header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
-            #     print(header, flush=True)
-            #     print(f"total funcs: {V}")
-            #     for aidx, text in enumerate(agent_texts):
-            #         funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
-            #         snippet = (text or "")[:preview_limit]
-            #         if text and len(text) > preview_limit:
-            #             snippet += "..."
-            #         print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
-            #         print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
-            # except Exception:
-            #     pass
+            try:
+                preview_limit = 40000
+                task_id = example.get("task_id")
+                header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
+                print(header, flush=True)
+                print(f"total funcs: {V}")
+                for aidx, text in enumerate(agent_texts):
+                    funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
+                    snippet = (text or "")[:preview_limit]
+                    if text and len(text) > preview_limit:
+                        snippet += "..."
+                    print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
+                    # print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
+            except Exception:
+                pass
 
             rewards.append(total)
 
