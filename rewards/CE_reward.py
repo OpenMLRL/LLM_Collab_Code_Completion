@@ -392,7 +392,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             # lv2: constrain total picks S = sum_i |A_i|
             S_total = sum(len(s) for s in A_sets)
             # Early termination if total picks exceed 2V
-            if S_total >= 2 * V + 2:
+            if S_total > 2 * V + 2:
                 rewards.append(-INF)
                 continue
 
@@ -405,11 +405,13 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 if S_total <= V:
                     dv = float(S_total) - float(V)
                     lv2 = 2.0 - 3.0 * (dv * dv) / (float(V) * float(V))
-                else:
+                elif S_total <= V * 2 + 1:
                     # Right branch: vertex at x=V, passing (2V+1, -1)
                     # p(S) = 2 - 3 * ((S - V)^2) / (V + 1)^2
                     dv = float(S_total) - float(V)
                     lv2 = 2.0 - 3.0 * (dv * dv) / float((V + 1) * (V + 1))
+                elif S_total == V * 2 + 2:
+                    lv2 = -3.0
             else:
                 lv2 = -2.0 * INF
             # numerical guard
