@@ -20,6 +20,10 @@ Scoring (redesigned):
   Target t = V/N, MSD = (1/N) * Σ (s_i - t)^2, MSD_max = (1/N) * V^2 * (1 - 1/N).
   Score R_bal = max(0, 1 - MSD / (MSD_max + eps)).
 Total reward = lv1 + lv2 + lv3.
+
+Additionally computed (not included in total):
+- lv4 (syntax): 2.0 if combined code compiles; else 0.0.
+- lv5 (tests): 4.0 * (weighted passed tests ratio) using prior design.
 """
 
 from __future__ import annotations
@@ -28,10 +32,8 @@ import json
 import subprocess
 import sys
 import tempfile
-import textwrap
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set
 import os
-import math
 
 def _combine_code(impl_code: str, test_code: str) -> str:
     return (impl_code or "").rstrip() + "\n\n" + (test_code or "").lstrip()
@@ -226,6 +228,8 @@ from LLM_Collab_Module_Completion.utils.data import (
 )
 from LLM_Collab_Module_Completion.utils.parse_completion import extract_method_snippets
 from LLM_Collab_Module_Completion.loggers.reward_logger import RewardLogger
+from LLM_Collab_Module_Completion.utils.merge import merge_methods_into_skeleton
+from LLM_Collab_Module_Completion.utils.test_analysis import methods_called_per_test
 
 
 def _compute_call_graph_components(source_code: str, class_name: str, methods: Set[str]) -> List[Set[str]]:
@@ -425,11 +429,66 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             eps = 1e-8
             lv3 = 3 * max(0.0, 1.0 - (msd / (msd_max + eps)))
 
+            # ---------- Added lv4 (syntax) and lv5 (tests) per prior design ----------
+            # Build merged candidate code from agent completions for syntax/tests evaluation
+            method_to_code: Dict[str, str] = {}
+            try:
+                for agent_idx in range(num_agents):
+                    comp_text = agent_texts[agent_idx] if agent_idx < len(agent_texts) else ""
+                    if getattr(strategy, "self_select", False):
+                        allowed = set(method_names)
+                    else:
+                        allowed = {m for m, a in partition.items() if a == agent_idx}
+                    if not allowed:
+                        continue
+                    snippets = extract_method_snippets(comp_text or "", allowed_methods=allowed)
+                    method_to_code.update(snippets)
+            except Exception:
+                method_to_code = {}
+
+            combined_code = merge_methods_into_skeleton(
+                skeleton=skeleton,
+                class_name=class_name,
+                method_to_code=method_to_code,
+            )
+
+            # Compute per-test used methods for weighting (reused from earlier version)
+            per_test_methods = methods_called_per_test(
+                test_code=test_code,
+                candidate_methods=set(method_names),
+                class_name=class_name,
+            )
+
+            run_res = run_unittests_with_details(combined_code, test_code)
+            syntax_ok = bool(run_res.get("syntax_ok", False))
+            lv4_syntax = 2.0 if syntax_ok else 0.0
+
+            test_results = run_res.get("test_results", []) or []
+            num_x_total = 0
+            num_x_passed = 0
+            for tr in test_results:
+                t_id = str(tr.get("id", ""))
+                outcome = str(tr.get("outcome", ""))
+                used = per_test_methods.get(t_id, set())
+                if not used:
+                    continue
+                if getattr(strategy, "self_select", False):
+                    x = sum(1 for s in A_sets if s & used)
+                else:
+                    agents_involved = {partition.get(m, -1) for m in used if m in partition}
+                    agents_involved.discard(-1)
+                    x = len(agents_involved)
+                if x > 0:
+                    num_x_total += x
+                    if outcome == "passed":
+                        num_x_passed += x
+            lv5_tests = (2.0 * (num_x_passed / num_x_total)) if num_x_total > 0 else 0.0
+
             _count_pass_lv1_2 += 1
             total = float(lv1 + lv2 + lv3)
 
             print('=' * 50)
-            print(lv1, lv2, lv3)
+            print(lv1, lv2, lv3, lv4_syntax, lv5_tests)
             print(_count_pass_lv0 / _count_total)
             print(_count_pass_lv1_2 / _count_total)
             print('=' * 50)
@@ -450,6 +509,10 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                         step=None,
                         commit=False,
                         prefix="eval/ce_reward",
+                        extra={
+                            "level4_syntax": lv4_syntax,
+                            "level5_tests": lv5_tests,
+                        },
                     )
                 except Exception:
                     pass
