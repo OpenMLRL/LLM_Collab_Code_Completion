@@ -263,7 +263,8 @@ def main():
     try:
         na = getattr(magrpo_args, "normalize_advantage", None)
         ec = getattr(magrpo_args, "epsilon_clip", None)
-        print(f"[train] MAGRPOConfig opts: normalize_advantage={na} epsilon_clip={ec}")
+        lr = getattr(magrpo_args, "learning_rate", None)
+        print(f"[train] MAGRPOConfig opts: normalize_advantage={na} epsilon_clip={ec} learning_rate={lr}")
     except Exception:
         pass
     formatters = build_agent_formatters(strategy)

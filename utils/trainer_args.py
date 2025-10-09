@@ -83,11 +83,14 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
     output_dir_cfg = tr.get("output_dir", os.path.join(os.getcwd(), "runs"))
     output_dir_resolved = _expand_jobid_placeholder(str(output_dir_cfg))
 
+    # Support both 'learning_rate' and shorthand 'lr'
+    lr_val = tr.get("learning_rate", tr.get("lr", 3e-5))
+
     candidate = {
         "output_dir": output_dir_resolved,
         "num_train_epochs": _as_int(tr.get("num_train_epochs", 3), 3),
         "per_device_train_batch_size": _as_int(tr.get("per_device_train_batch_size", 1), 1),
-        "learning_rate": _as_float(tr.get("learning_rate", 3e-5), 3e-5),
+        "learning_rate": _as_float(lr_val, 3e-5),
         "logging_steps": _as_int(tr.get("logging_steps", 50), 50),
         "save_steps": _as_int(tr.get("save_steps", 200), 200),
         "num_generations": _as_int(tr.get("num_generations", 4), 4),
@@ -108,5 +111,13 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
     params.discard("kwargs")
 
     filtered = {k: v for k, v in candidate.items() if k in params}
-    return MAGRPOConfig(**filtered)
+    cfg_obj = MAGRPOConfig(**filtered)
 
+    # Ensure learning_rate is accessible on the config object even if not in __init__
+    try:
+        if not hasattr(cfg_obj, "learning_rate"):
+            setattr(cfg_obj, "learning_rate", _as_float(lr_val, 3e-5))
+    except Exception:
+        pass
+
+    return cfg_obj
