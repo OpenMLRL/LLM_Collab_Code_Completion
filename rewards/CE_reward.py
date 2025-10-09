@@ -389,7 +389,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 rewards.append(-INF)
                 continue
             
-            lv1 = 1.0 * coverage_ratio
+            lv1 = 2.0 * coverage_ratio
 
             # lv2: constrain total picks S = sum_i |A_i|
             S_total = sum(len(s) for s in A_sets)
@@ -428,6 +428,11 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             msd_max = (1.0 / N) * (V ** 2) * (1.0 - 1.0 / N) if N > 0 else 0.0
             eps = 1e-8
             lv3 = 3 * max(0.0, 1.0 - (msd / (msd_max + eps)))
+
+            discount_lv123 = 0.5
+            lv1 *= discount_lv123
+            lv2 *= discount_lv123
+            lv3 *= discount_lv123
 
             # ---------- Added lv4 (syntax) and lv5 (tests) per prior design ----------
             # Build merged candidate code from agent completions for syntax/tests evaluation
