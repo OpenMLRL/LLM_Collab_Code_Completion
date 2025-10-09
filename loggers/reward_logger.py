@@ -7,10 +7,12 @@ Usage example (inside rewards/CE_reward.py after computing scores):
 
     from LLM_Collab_Module_Completion.loggers.reward_logger import RewardLogger
 
+    # New preferred argument names: cover, overlap, balance
+    # (Backwards-compatible: still accepts ceb, syntax, tests)
     RewardLogger.log_ce_levels(
-        ceb=ceb,                 # lv1 (0..3)
-        syntax=syntax_score,     # lv2 (0 or 2)
-        tests=pass_score,        # lv3 (0..4)
+        cover=ceb,               # lv1 (0..3)
+        overlap=syntax_score,    # lv2 (0..1), higher is better
+        balance=pass_score,      # lv3 (0..3)
         components=lv4,          # lv4 (0..1)
         total=total,             # optional overall sum
         step=None,               # optional step; None -> let wandb handle
@@ -76,9 +78,15 @@ class RewardLogger:
     @staticmethod
     def log_ce_levels(
         *,
-        ceb: float,
-        syntax: float,
-        tests: float,
+        # Preferred names
+        cover: Optional[float] = None,
+        overlap: Optional[float] = None,
+        balance: Optional[float] = None,
+        # Backwards compatible aliases
+        ceb: Optional[float] = None,
+        syntax: Optional[float] = None,
+        tests: Optional[float] = None,
+        # Remaining levels
         components: float,
         total: Optional[float] = None,
         step: Optional[int] = None,
@@ -89,9 +97,9 @@ class RewardLogger:
         """Log CE reward breakdown to wandb.
 
         Parameters
-        - ceb: level 1 (Coverage/Overlap/Balance) score in [0, 3]
-        - syntax: level 2 syntax score in {0, 2}
-        - tests: level 3 weighted test pass score in [0, 4]
+        - cover (alias: ceb): level 1 "cover" score
+        - overlap (alias: syntax): level 2 "overlap" score
+        - balance (alias: tests): level 3 "balance" score
         - components: level 4 component score in [0, 1]
         - total: optional overall reward sum
         - step: optional global step for wandb.log
@@ -99,6 +107,14 @@ class RewardLogger:
         - prefix: metric namespace prefix (default "ce_reward")
         - extra: optional dict for additional fields (e.g., num_x_passed/total)
         """
+        # Select values with backwards-compatible aliases
+        if cover is None:
+            cover = ceb
+        if overlap is None:
+            overlap = syntax
+        if balance is None:
+            balance = tests
+
         # Normalize numbers defensively
         def _f(x: Any) -> Optional[float]:
             try:
@@ -107,9 +123,10 @@ class RewardLogger:
                 return None
 
         payload: Dict[str, Any] = {
-            f"{prefix}/level1_ceb": _f(ceb),
-            f"{prefix}/level2_syntax": _f(syntax),
-            f"{prefix}/level3_tests": _f(tests),
+            # Renamed metrics (old: level1_ceb, level2_syntax, level3_tests)
+            f"{prefix}/level1_cover": _f(cover),
+            f"{prefix}/level2_overlap": _f(overlap),
+            f"{prefix}/level3_balance": _f(balance),
             f"{prefix}/level4_components": _f(components),
         }
         if total is not None:
@@ -131,13 +148,25 @@ class RewardLogger:
         commit: bool = False,
         prefix: str = "ce_reward",
     ) -> None:
-        """Log already-aggregated mean CE levels. Expects keys: ceb, syntax, tests, components, [total]."""
+        """Log already-aggregated mean CE levels.
+        Accepts either new keys {cover, overlap, balance, components, [total]} or
+        legacy keys {ceb, syntax, tests, components, [total]}.
+        """
+        def _get(d: Mapping[str, float], *keys: str) -> float:
+            for k in keys:
+                if k in d and d[k] is not None:
+                    try:
+                        return float(d[k])
+                    except Exception:
+                        pass
+            return 0.0
+
         RewardLogger.log_ce_levels(
-            ceb=float(levels.get("ceb", 0.0)),
-            syntax=float(levels.get("syntax", 0.0)),
-            tests=float(levels.get("tests", 0.0)),
-            components=float(levels.get("components", 0.0)),
-            total=(float(levels["total"]) if "total" in levels else None),
+            cover=_get(levels, "cover", "ceb"),
+            overlap=_get(levels, "overlap", "syntax"),
+            balance=_get(levels, "balance", "tests"),
+            components=_get(levels, "components"),
+            total=(_get(levels, "total") if "total" in levels else None),
             step=step,
             commit=commit,
             prefix=prefix,
@@ -147,6 +176,11 @@ class RewardLogger:
     def log_ce_levels_batch(
         batch_levels: Mapping[str, Any] | None = None,
         *,
+        # New preferred list names
+        cover_list: Optional[list[float]] = None,
+        overlap_list: Optional[list[float]] = None,
+        balance_list: Optional[list[float]] = None,
+        # Backwards-compatible list names
         ceb_list: Optional[list[float]] = None,
         syntax_list: Optional[list[float]] = None,
         tests_list: Optional[list[float]] = None,
@@ -170,20 +204,20 @@ class RewardLogger:
             return float(sum(vals) / len(vals)) if vals else 0.0
 
         if batch_levels is not None:
-            ceb_list = batch_levels.get("ceb")
-            syntax_list = batch_levels.get("syntax")
-            tests_list = batch_levels.get("tests")
+            # Prefer new keys; fall back to legacy
+            cover_list = batch_levels.get("cover") or batch_levels.get("ceb")
+            overlap_list = batch_levels.get("overlap") or batch_levels.get("syntax")
+            balance_list = batch_levels.get("balance") or batch_levels.get("tests")
             components_list = batch_levels.get("components")
             total_list = batch_levels.get("total")
 
         RewardLogger.log_ce_levels(
-            ceb=_mean(ceb_list),
-            syntax=_mean(syntax_list),
-            tests=_mean(tests_list),
+            cover=_mean(cover_list if cover_list is not None else ceb_list),
+            overlap=_mean(overlap_list if overlap_list is not None else syntax_list),
+            balance=_mean(balance_list if balance_list is not None else tests_list),
             components=_mean(components_list),
             total=_mean(total_list) if total_list is not None else None,
             step=step,
             commit=commit,
             prefix=f"{prefix}_mean",
         )
-
