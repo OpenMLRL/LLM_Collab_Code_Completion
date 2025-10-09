@@ -386,7 +386,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             union_size = len(set().union(*A_sets)) if A_sets else 0
             coverage_ratio = union_size / V
             if coverage_ratio < 0.5:
-                rewards.append(-INF * 3)
+                rewards.append(-INF * 2)
                 continue
             
             lv1 = 1.0 * coverage_ratio
@@ -395,7 +395,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             S_total = sum(len(s) for s in A_sets)
             # Early termination if total picks exceed 2V
             if S_total > 2 * V + 2:
-                rewards.append(-INF * 3)
+                rewards.append(-INF * 2)
                 continue
 
             # Piecewise quadratic for lv2:
@@ -413,7 +413,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     dv = float(S_total) - float(V)
                     lv2 = 2.0 - 3.0 * (dv * dv) / float((V + 1) * (V + 1))
                 elif S_total == V * 2 + 2:
-                    lv2 = -5.0
+                    lv2 = -4.0
             else:
                 lv2 = -2.0 * INF
            
