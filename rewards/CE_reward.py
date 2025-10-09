@@ -461,7 +461,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             run_res = run_unittests_with_details(combined_code, test_code)
             syntax_ok = bool(run_res.get("syntax_ok", False))
-            lv4_syntax = 2.0 if syntax_ok else 0.0
+            lv4_syntax = 1.0 if syntax_ok else -1.0
 
             test_results = run_res.get("test_results", []) or []
             num_x_total = 0
