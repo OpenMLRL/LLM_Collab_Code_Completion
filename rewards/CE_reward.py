@@ -363,7 +363,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             # Early penalty: if any agent generated zero functions, assign -2 and skip
             try:
                 if any((len(s) if s is not None else 0) == 0 for s in A_sets):
-                    rewards.append(-INF * 2)
+                    rewards.append(-INF * 4)
                     continue
             except Exception:
                 # fall back to normal flow on unexpected structure
@@ -381,19 +381,17 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             # lv1: 2 * (|union| / V); if coverage < 1/2 => reward 0
             union_size = len(set().union(*A_sets)) if A_sets else 0
             coverage_ratio = union_size / V
-            if coverage_ratio < 0.35:
-                rewards.append(-INF)
+            if coverage_ratio < 0.5:
+                rewards.append(-INF * 3)
                 continue
             
-            lv1 = 2.0 * coverage_ratio
-            if coverage_ratio < 0.5:
-                lv1 = 0
+            lv1 = 1.0 * coverage_ratio
 
             # lv2: constrain total picks S = sum_i |A_i|
             S_total = sum(len(s) for s in A_sets)
             # Early termination if total picks exceed 2V
             if S_total > 2 * V + 2:
-                rewards.append(-INF)
+                rewards.append(-INF * 3)
                 continue
 
             # Piecewise quadratic for lv2:
@@ -411,15 +409,10 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     dv = float(S_total) - float(V)
                     lv2 = 2.0 - 3.0 * (dv * dv) / float((V + 1) * (V + 1))
                 elif S_total == V * 2 + 2:
-                    lv2 = -3.0
+                    lv2 = -5.0
             else:
                 lv2 = -2.0 * INF
-            # numerical guard
-            # if lv2 > 2.0:
-            #     lv2 = 2.0
-            # if lv2 < -2.0 * INF:
-            #     lv2 = -2.0 * INF
-
+           
             # get bonus after passing lv1, lv2
             # lv_bonus = 0.2
 
