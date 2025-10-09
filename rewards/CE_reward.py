@@ -367,7 +367,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             # Early penalty: if any agent generated zero functions, assign -2 and skip
             try:
                 if any((len(s) if s is not None else 0) == 0 for s in A_sets):
-                    rewards.append(-INF * 4)
+                    rewards.append(-INF * 2)
                     continue
             except Exception:
                 # fall back to normal flow on unexpected structure
@@ -386,7 +386,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             union_size = len(set().union(*A_sets)) if A_sets else 0
             coverage_ratio = union_size / V
             if coverage_ratio < 0.5:
-                rewards.append(-INF * 2)
+                rewards.append(-INF)
                 continue
             
             lv1 = 1.0 * coverage_ratio
@@ -395,7 +395,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             S_total = sum(len(s) for s in A_sets)
             # Early termination if total picks exceed 2V
             if S_total > 2 * V + 2:
-                rewards.append(-INF * 2)
+                rewards.append(-INF)
                 continue
 
             # Piecewise quadratic for lv2:
@@ -413,7 +413,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     dv = float(S_total) - float(V)
                     lv2 = 2.0 - 3.0 * (dv * dv) / float((V + 1) * (V + 1))
                 elif S_total == V * 2 + 2:
-                    lv2 = -4.0
+                    lv2 = -2.5
             else:
                 lv2 = -2.0 * INF
            
@@ -491,7 +491,6 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             print(lv1, lv2, lv3, lv4_syntax, lv5_tests)
             print(_count_pass_lv0 / _count_total)
             print(_count_pass_lv1_2 / _count_total)
-            print('=' * 50)
 
             # Optional eval logging (reuse field names for compatibility)
             try:
@@ -530,9 +529,11 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     if text and len(text) > preview_limit:
                         snippet += "..."
                     print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
-                    # print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
+                    print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
             except Exception:
                 pass
+
+            print('=' * 50)
 
             rewards.append(total)
 

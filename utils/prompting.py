@@ -67,7 +67,7 @@ def build_take_job_prompt(
         f"""
         You are one of {n} collaborating agents tasked with implementing the Python class '{class_name}'.
 
-        Below is the full class skeleton and the set {v_braced} of target methods that require implementation. Choose a **non-empty, proper subset** of {v_braced} (i.e., not all of {v_braced}), aiming for roughly {target_count} methods to balance workload and avoid overlap.
+        Below is the full class skeleton and the set {v_braced} of target methods that require implementation. Choose a **non-empty, proper subset** of {v_braced} (i.e., not all of {v_braced}), aiming for roughly {target_count} or max(1, {target_count-1}) methods to balance workload and avoid overlap.
 
         Target methods (Total of {total_methods}):
         {methods_text}
@@ -76,6 +76,7 @@ def build_take_job_prompt(
         - Output **only** the chosen methods as Python function definitions **with full bodies**.
         - Put **all** functions in **one** fenced code block: ``` ... ```
         - **Do not** output the class header, any imports, or any text outside the code block.
+        - **Do not** include any comments or docstrings in the code (no `# ...` comments and no `\"\"\"...\"\"\"` or `'''...'''` docstrings).
         - Use the **exact** signatures from the skeleton: names, parameters, defaults, type hints, and any decorators (@staticmethod/@classmethod).
         - Implement real, runnable logic; **no** `pass`, `...`, `TODO`, or placeholder returns.
         - Function names must be **only** from {v_braced}; prefer the order they appear in {v_braced}.
