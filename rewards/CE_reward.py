@@ -466,7 +466,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             run_res = run_unittests_with_details(combined_code, test_code)
             syntax_ok = bool(run_res.get("syntax_ok", False))
-            lv4 = 1.0 if syntax_ok else -1.0
+            lv4 = 2.0 if syntax_ok else 0.0
 
             test_results = run_res.get("test_results", []) or []
             num_x_total = 0
@@ -487,7 +487,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     num_x_total += x
                     if outcome == "passed":
                         num_x_passed += x
-            lv5 = (2.0 * (num_x_passed / num_x_total)) if num_x_total > 0 else 0.0
+            lv5 = (3.0 * (num_x_passed / num_x_total)) if num_x_total > 0 else 0.0
 
             _count_pass_lv1_2 += 1
             total = float(lv1 + lv2 + lv3 + lv4 + lv5)
