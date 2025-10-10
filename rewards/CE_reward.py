@@ -466,7 +466,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             run_res = run_unittests_with_details(combined_code, test_code)
             syntax_ok = bool(run_res.get("syntax_ok", False))
-            lv4_syntax = 1.0 if syntax_ok else -1.0
+            lv4 = 1.0 if syntax_ok else -1.0
 
             test_results = run_res.get("test_results", []) or []
             num_x_total = 0
@@ -487,13 +487,13 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     num_x_total += x
                     if outcome == "passed":
                         num_x_passed += x
-            lv5_tests = (2.0 * (num_x_passed / num_x_total)) if num_x_total > 0 else 0.0
+            lv5 = (2.0 * (num_x_passed / num_x_total)) if num_x_total > 0 else 0.0
 
             _count_pass_lv1_2 += 1
-            total = float(lv1 + lv2 + lv3)
+            total = float(lv1 + lv2 + lv3 + lv4 + lv5)
 
             print('=' * 50)
-            print(lv1, lv2, lv3, lv4_syntax, lv5_tests)
+            print(lv1, lv2, lv3, lv4, lv5)
             print(_count_pass_lv0 / _count_total)
             print(_count_pass_lv1_2 / _count_total)
 
@@ -514,8 +514,8 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                         commit=False,
                         prefix="eval/ce_reward",
                         extra={
-                            "level4_syntax": lv4_syntax,
-                            "level5_tests": lv5_tests,
+                            "level4_syntax": lv4,
+                            "level5_tests": lv5,
                         },
                     )
                 except Exception:
