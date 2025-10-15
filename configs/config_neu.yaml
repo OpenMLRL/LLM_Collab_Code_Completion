@@ -14,6 +14,11 @@ collab:
   mode: TAKE_JOB           # ONE | RAND_PARTITION | TAKE_JOB
   num_agents: 3       # used when mode=RAND_PARTITION or TAKE_JOB
 
+external:
+  mode: level_feedback   # plain | passed | level_feedback | level_passed
+  original_prompt: true  # include skeleton and instructions each turn
+  previous_response: true  # include previous implementations each turn
+
 trainer:
   output_dir: /projects/llpr/tenshi/output/CE/[jobid]
   num_train_epochs: 3
