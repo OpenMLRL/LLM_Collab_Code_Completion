@@ -25,9 +25,17 @@ def _aggregate_prev_and_merged(
     method_set = set(method_names or [])
     prev: List[List[str]] = []
     method_to_code: Dict[str, str] = {}
+    def _truncate(text: str, limit: int = 4000) -> str:
+        t = text or ""
+        if len(t) <= limit:
+            return t
+        return t[:limit] + "\n... [TRUNCATED]"
     for text in completions:
         parsed = extract_method_snippets(text or "", allowed_methods=method_set)
-        prev.append(list(parsed.values()))
+        vals = list(parsed.values())
+        if not vals and (text or "").strip():
+            vals = [_truncate((text or "").strip())]
+        prev.append(vals)
         method_to_code.update(parsed)
     combined = merge_methods_into_skeleton(skeleton, class_name or "", method_to_code)
     return prev, combined
@@ -116,4 +124,3 @@ def format_followup_prompts(
         prompts[i] = "\n".join(parts)
 
     return prompts
-

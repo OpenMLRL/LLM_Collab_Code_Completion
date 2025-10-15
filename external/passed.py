@@ -55,9 +55,17 @@ def format_followup_prompts(
     # collect previous snippets per agent
     method_set = set(method_names or [])
     prev_per_agent: List[List[str]] = []
+    def _truncate(text: str, limit: int = 4000) -> str:
+        t = text or ""
+        if len(t) <= limit:
+            return t
+        return t[:limit] + "\n... [TRUNCATED]"
     for text in agent_completions:
         parsed = extract_method_snippets(text or "", allowed_methods=method_set)
-        prev_per_agent.append(list(parsed.values()))
+        vals = list(parsed.values())
+        if not vals and (text or "").strip():
+            vals = [_truncate(text.strip())]
+        prev_per_agent.append(vals)
 
     for i in range(n):
         assigned = list(assignments.get(i, []) if assignments else [])
@@ -88,4 +96,3 @@ def format_followup_prompts(
         prompts[i] = "\n".join(parts)
 
     return prompts
-

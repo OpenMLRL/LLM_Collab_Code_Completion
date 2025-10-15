@@ -31,7 +31,10 @@ def _aggregate_group_state(
 
     for idx, text in enumerate(completions):
         parsed = extract_method_snippets(text or "", allowed_methods=method_set)
-        prev_per_agent.append(list(parsed.values()))
+        vals = list(parsed.values())
+        if not vals and (text or "").strip():
+            vals = [_truncate_block((text or "").strip(), limit=4000)[0]]
+        prev_per_agent.append(vals)
         names_per_agent[idx] = list(parsed.keys())
         method_to_code.update(parsed)
 
@@ -129,4 +132,3 @@ def format_followup_prompts(
         prompts[i] = "\n".join(parts)
 
     return prompts
-

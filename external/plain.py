@@ -20,13 +20,22 @@ def _per_agent_prev_snippets(
     n = len(completions)
     method_set = set(method_names or [])
     out: List[List[str]] = [[] for _ in range(n)]
+    def _truncate(text: str, limit: int = 4000) -> str:
+        t = text or ""
+        if len(t) <= limit:
+            return t
+        return t[:limit] + "\n... [TRUNCATED]"
+
     for i in range(n):
         text = completions[i] or ""
         allowed = set(assignments.get(i, []) or []) if assignments else method_set
         if not allowed:
             allowed = method_set
         parsed = extract_method_snippets(text, allowed_methods=allowed)
-        out[i] = list(parsed.values())
+        vals = list(parsed.values())
+        if not vals and text.strip():
+            vals = [_truncate(text.strip())]
+        out[i] = vals
     return out
 
 
@@ -76,4 +85,3 @@ def format_followup_prompts(
         prompts[i] = "\n".join(parts)
 
     return prompts
-

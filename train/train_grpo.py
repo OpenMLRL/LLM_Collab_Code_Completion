@@ -171,12 +171,17 @@ def main():
         return
 
     train_ds, eval_ds = dataset_train_eval_split(ds_all, split_ratio=split_ratio, seed=seed)
-    # Tag datasets with phase so reward logger can distinguish eval vs. train
+    # Tag datasets with phase and synthesize a unique 'prompt' key per sample
     try:
-        train_ds = train_ds.map(lambda _: {"phase": "train"})
-        eval_ds = eval_ds.map(lambda _: {"phase": "eval"})
+        train_ds = train_ds.map(lambda _, i: {"phase": "train", "prompt": f"classeval:train:{i}"}, with_indices=True)
+        eval_ds = eval_ds.map(lambda _, i: {"phase": "eval", "prompt": f"classeval:eval:{i}"}, with_indices=True)
     except Exception:
-        pass
+        # Fallback: at least set phase if map signature differs
+        try:
+            train_ds = train_ds.map(lambda _: {"phase": "train"})
+            eval_ds = eval_ds.map(lambda _: {"phase": "eval"})
+        except Exception:
+            pass
 
     # Optional: set temp base dir and keep flag for unit test runner
     tmp_base = None
@@ -398,6 +403,10 @@ def main():
                         "method_names": method_names,
                         "assignments": assignments,
                     }
+                    # Also register dataset-level key used by MAGRPO to call external_transition
+                    ds_key = _normalize_key(str(item.get("prompt", f"classeval:{split_name}:{idx}")))
+                    if ds_key:
+                        context_map[ds_key] = payload
                     for p in prompts_for_agents:
                         key = _normalize_key(p)
                         context_map[key] = payload
