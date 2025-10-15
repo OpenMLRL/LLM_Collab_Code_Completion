@@ -67,6 +67,14 @@ from LLM_Collab_Module_Completion.collaborations import (
     get_strategy,
     build_agent_formatters,
 )
+from LLM_Collab_Module_Completion.utils.prompting import (
+    build_agent_prompt,
+)
+# External transition (multi-turn)
+from LLM_Collab_Module_Completion.external import (
+    set_context_resolver as external_set_context_resolver,
+    get_external_transition as external_get_transition,
+)
 
 
 def load_yaml(path: str) -> Dict[str, Any]:
@@ -327,6 +335,99 @@ def main():
 
     # Apply in-repo patches (no external file changes)
     apply_default_patches(cfg)
+
+    # Multi-turn: register external transition when num_turns > 1
+    is_multi_turn = False
+    try:
+        is_multi_turn = int(getattr(magrpo_args, "num_turns", 1)) > 1
+    except Exception:
+        is_multi_turn = False
+
+    external_cfg = cfg.get("external", {})
+
+    if is_multi_turn:
+        # Build a context map from per-agent initial prompts to dataset context
+        # We pre-materialize prompts for each split to avoid ambiguity.
+        def _normalize_key(s: str) -> str:
+            return " ".join((s or "").split()).strip()
+
+        context_map: Dict[str, Any] = {}
+
+        def _register_split(ds, split_name: str):
+            try:
+                for idx in range(len(ds)):
+                    item = ds[idx]
+                    skeleton = str(item.get("skeleton", ""))
+                    test_code = str(item.get("test", ""))
+                    class_name = extract_class_name(skeleton) or ""
+                    method_names = extract_incomplete_methods(skeleton)
+                    example = {
+                        "skeleton": skeleton,
+                        "class_name": class_name,
+                        "task_id": f"{split_name}:{idx}",
+                    }
+                    # Partition once per example; build assigned lists per agent
+                    try:
+                        part = strategy.partition(example)
+                    except Exception:
+                        part = {}
+                    assignments: Dict[int, List[str]] = {i: [] for i in range(num_agents)}
+                    if part:
+                        for m, aid in part.items():
+                            if 0 <= int(aid) < num_agents:
+                                assignments[int(aid)].append(m)
+
+                    # Build per-agent prompts and register all to the same context payload
+                    prompts_for_agents: List[str] = []
+                    for aidx, fmt in enumerate(formatters):
+                        try:
+                            p = fmt(example)
+                        except Exception:
+                            p = build_agent_prompt(
+                                skeleton=skeleton,
+                                class_name=class_name,
+                                assigned_methods=assignments.get(aidx, []),
+                            )
+                        prompts_for_agents.append(p)
+
+                    payload = {
+                        "skeleton": skeleton,
+                        "class_name": class_name,
+                        "tests_eval": test_code,
+                        "tests_sandbox": test_code,  # same by default for ClassEval
+                        "method_names": method_names,
+                        "assignments": assignments,
+                    }
+                    for p in prompts_for_agents:
+                        key = _normalize_key(p)
+                        context_map[key] = payload
+            except Exception:
+                pass
+
+        _register_split(train_ds, "train")
+        _register_split(eval_ds, "eval")
+
+        def _resolver(p: str):
+            return context_map.get(_normalize_key(p))
+
+        external_set_context_resolver(_resolver)
+
+        # Wire external transition into trainer
+        external_mode = str(external_cfg.get("mode", "level_feedback"))
+
+        def external_transition_wrapper(prompt, agent_completions, num_agents=None, **_kwargs):
+            original_prompt_flag = external_cfg.get("original_prompt", True)
+            previous_response_flag = external_cfg.get("previous_response", True)
+            return external_get_transition(
+                prompt=prompt,
+                agent_completions=agent_completions,
+                num_agents=(num_agents if num_agents is not None else num_agents),
+                mode=external_mode,
+                original_prompt=original_prompt_flag,
+                previous_response=previous_response_flag,
+            )
+
+        trainer_kwargs["external_transition"] = external_transition_wrapper
 
     trainer = MAGRPOTrainer(**trainer_kwargs)
     trainer.train()

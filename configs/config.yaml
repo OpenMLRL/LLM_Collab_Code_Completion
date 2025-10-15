@@ -14,6 +14,11 @@ collab:
   mode: TAKE_JOB           # ONE | RAND_PARTITION | TAKE_JOB
   num_agents: 3       # used when mode=RAND_PARTITION or TAKE_JOB
 
+external:
+  mode: level_feedback   # plain | passed | level_feedback | level_passed
+  original_prompt: true  # include skeleton and instructions each turn
+  previous_response: true  # include previous implementations each turn
+
 trainer:
   output_dir: /projects/bevi/tchen19/output/CE/[jobid]
   num_train_epochs: 3
@@ -27,7 +32,7 @@ trainer:
   max_new_tokens: 512
   temperature: 0.25
   top_p: 0.90
-  num_turns: 1
+  num_turns: 2
   # PPO-related (CoMLRL MAGRPO) options
   # Whether to normalize advantages when updating policy
   # normalize_advantage: true
