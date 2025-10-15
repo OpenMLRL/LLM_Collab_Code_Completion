@@ -33,7 +33,7 @@ def _aggregate_group_state(
         parsed = extract_method_snippets(text or "", allowed_methods=method_set)
         vals = list(parsed.values())
         if not vals and (text or "").strip():
-            vals = [_truncate_block((text or "").strip(), limit=4000)[0]]
+            vals = [(text or "").strip()]
         prev_per_agent.append(vals)
         names_per_agent[idx] = list(parsed.keys())
         method_to_code.update(parsed)
@@ -42,13 +42,11 @@ def _aggregate_group_state(
     return prev_per_agent, names_per_agent, combined
 
 
-def _truncate_block(text: str, limit: int = 4000) -> Tuple[str, bool]:
-    """Truncate a long text block for inclusion in prompts."""
+def _identity_block(text: str) -> Tuple[str, bool]:
+    """Return text as-is without truncation."""
     if not isinstance(text, str):
         return "", False
-    if len(text) <= limit:
-        return text, False
-    return text[:limit] + "\n... [TRUNCATED]", True
+    return text, False
 
 
 def format_followup_prompts(
@@ -85,9 +83,8 @@ def format_followup_prompts(
         group_lines.append(f"- Agent {i}: {len(names)} function(s)")
     group_summary = "\n".join(group_lines)
 
-    combined_view, was_trunc = _truncate_block(combined, limit=6000)
-    combined_header = "COMBINED CODE START" + (" (TRUNCATED)" if was_trunc else "")
-    combined_block = f"{combined_header}\n{combined_view}\nCOMBINED CODE END"
+    combined_view, _ = _identity_block(combined)
+    combined_block = f"COMBINED CODE START\n{combined_view}\nCOMBINED CODE END"
 
     for i in range(n):
         assigned = list(assignments.get(i, []) if assignments else [])
@@ -125,9 +122,18 @@ def format_followup_prompts(
                 "",
             ])
 
-        parts.append(
-            "Revise ONLY the target methods. Output ONLY the function definition(s); no prose, no fences."
-        )
+        methods = list(method_names or [])
+        total_methods = len(methods)
+        target_count = (total_methods + n - 1) // n if total_methods > 0 else 0
+        if assigned:
+            closing = (
+                f"Revise your code. Implement your assigned {len(assigned)} method(s)."
+            )
+        else:
+            closing = (
+                f"Revise your code. Aim for ~{max(1, target_count)} method(s)."
+            )
+        parts.append(closing)
 
         prompts[i] = "\n".join(parts)
 

@@ -20,12 +20,6 @@ def _per_agent_prev_snippets(
     n = len(completions)
     method_set = set(method_names or [])
     out: List[List[str]] = [[] for _ in range(n)]
-    def _truncate(text: str, limit: int = 4000) -> str:
-        t = text or ""
-        if len(t) <= limit:
-            return t
-        return t[:limit] + "\n... [TRUNCATED]"
-
     for i in range(n):
         text = completions[i] or ""
         allowed = set(assignments.get(i, []) or []) if assignments else method_set
@@ -34,7 +28,7 @@ def _per_agent_prev_snippets(
         parsed = extract_method_snippets(text, allowed_methods=allowed)
         vals = list(parsed.values())
         if not vals and text.strip():
-            vals = [_truncate(text.strip())]
+            vals = [text.strip()]
         out[i] = vals
     return out
 
@@ -79,9 +73,19 @@ def format_followup_prompts(
                 "",
             ])
 
-        parts.append(
-            "Revise ONLY the target methods. Output ONLY the function definition(s); no prose, no fences."
-        )
+        # Closing reminder: concise + rough count
+        methods = list(method_names or [])
+        total_methods = len(methods)
+        target_count = (total_methods + n - 1) // n if total_methods > 0 else 0
+        if assigned:
+            closing = (
+                f"Revise your code. Implement your assigned {len(assigned)} method(s)."
+            )
+        else:
+            closing = (
+                f"Revise your code. Aim for ~{max(1, target_count)} method(s)."
+            )
+        parts.append(closing)
         prompts[i] = "\n".join(parts)
 
     return prompts

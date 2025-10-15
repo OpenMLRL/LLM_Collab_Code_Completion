@@ -25,16 +25,11 @@ def _aggregate_prev_and_merged(
     method_set = set(method_names or [])
     prev: List[List[str]] = []
     method_to_code: Dict[str, str] = {}
-    def _truncate(text: str, limit: int = 4000) -> str:
-        t = text or ""
-        if len(t) <= limit:
-            return t
-        return t[:limit] + "\n... [TRUNCATED]"
     for text in completions:
         parsed = extract_method_snippets(text or "", allowed_methods=method_set)
         vals = list(parsed.values())
         if not vals and (text or "").strip():
-            vals = [_truncate((text or "").strip())]
+            vals = [(text or "").strip()]
         prev.append(vals)
         method_to_code.update(parsed)
     combined = merge_methods_into_skeleton(skeleton, class_name or "", method_to_code)
@@ -119,8 +114,20 @@ def format_followup_prompts(
             "Diagnostics:",
             diag_block,
             "",
-            "Revise ONLY the target methods. Output ONLY the function definition(s); no prose, no fences.",
         ])
+
+        methods = list(method_names or [])
+        total_methods = len(methods)
+        target_count = (total_methods + n - 1) // n if total_methods > 0 else 0
+        if assigned:
+            closing = (
+                f"Revise your code. Implement your assigned {len(assigned)} method(s)."
+            )
+        else:
+            closing = (
+                f"Revise your code. Aim for ~{max(1, target_count)} method(s)."
+            )
+        parts.append(closing)
         prompts[i] = "\n".join(parts)
 
     return prompts

@@ -67,7 +67,7 @@ def build_take_job_prompt(
         f"""
         You are one of {n} collaborating agents tasked with implementing the Python class '{class_name}'.
 
-        Below is the full class skeleton and the set {v_braced} of target methods that require implementation. Choose a **non-empty, proper subset** of {v_braced} (i.e., not all of {v_braced}), aiming for roughly {target_count} or max(1, {target_count-1}) methods to balance workload and avoid overlap.
+        Below is the full class skeleton and the set {v_braced} of target methods that require implementation. Choose a **non-empty, proper subset** of {v_braced} (i.e., not all of {v_braced}), aiming for roughly {target_count} or {max(1, target_count-1)} methods to balance workload and avoid overlap.
 
         Target methods (Total of {total_methods}):
         {methods_text}

@@ -55,16 +55,11 @@ def format_followup_prompts(
     # collect previous snippets per agent
     method_set = set(method_names or [])
     prev_per_agent: List[List[str]] = []
-    def _truncate(text: str, limit: int = 4000) -> str:
-        t = text or ""
-        if len(t) <= limit:
-            return t
-        return t[:limit] + "\n... [TRUNCATED]"
     for text in agent_completions:
         parsed = extract_method_snippets(text or "", allowed_methods=method_set)
         vals = list(parsed.values())
         if not vals and (text or "").strip():
-            vals = [_truncate(text.strip())]
+            vals = [(text or "").strip()]
         prev_per_agent.append(vals)
 
     for i in range(n):
@@ -91,8 +86,20 @@ def format_followup_prompts(
         parts.extend([
             f"Signal: {signal}",
             "",
-            "Revise ONLY the target methods. Output ONLY the function definition(s); no prose, no fences.",
         ])
+
+        methods = list(method_names or [])
+        total_methods = len(methods)
+        target_count = (total_methods + n - 1) // n if total_methods > 0 else 0
+        if assigned:
+            closing = (
+                f"Revise your code. Implement your assigned {len(assigned)} method(s)."
+            )
+        else:
+            closing = (
+                f"Revise your code. Aim for ~{max(1, target_count)} method(s)."
+            )
+        parts.append(closing)
         prompts[i] = "\n".join(parts)
 
     return prompts

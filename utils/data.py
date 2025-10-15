@@ -129,6 +129,24 @@ def extract_incomplete_methods(skeleton: str) -> List[str]:
                     if len(body) == 1 and isinstance(body[0], ast.Pass):
                         targets.append(item.name)
                         continue
+                    # Single Ellipsis: "..." or return ...
+                    try:
+                        if len(body) == 1 and isinstance(body[0], ast.Expr):
+                            val = getattr(body[0], "value", None)
+                            if isinstance(val, ast.Ellipsis) or (
+                                isinstance(val, ast.Constant) and getattr(val, "value", None) is Ellipsis
+                            ):
+                                targets.append(item.name)
+                                continue
+                        if len(body) == 1 and isinstance(body[0], ast.Return):
+                            val = getattr(body[0], "value", None)
+                            if isinstance(val, ast.Ellipsis) or (
+                                isinstance(val, ast.Constant) and getattr(val, "value", None) is Ellipsis
+                            ):
+                                targets.append(item.name)
+                                continue
+                    except Exception:
+                        pass
                     # Single raise NotImplementedError
                     if (
                         len(body) == 1

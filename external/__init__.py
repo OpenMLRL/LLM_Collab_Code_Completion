@@ -30,6 +30,7 @@ from . import passed
 from . import level_feedback
 from . import level_passed
 from . import group_feedback
+from . import personal_feedback
 
 # Verbose toggle for external previews
 VERBOSE = True
@@ -215,7 +216,27 @@ def get_external_transition(
         print("=" * 60 + "\n")
         return prompts
 
-    supported = ["plain", "passed", "level_feedback", "level_passed", "group_feedback"]
+    if mode_key == "personal_feedback":
+        prompts = personal_feedback.format_followup_prompts(
+            skeleton=skeleton,
+            class_name=class_name,
+            method_names=method_names,
+            assignments=assignments,
+            agent_completions=list(agent_completions),
+            test_code=test_code,
+            original_prompt_flag=original_prompt_flag,
+            previous_response_flag=previous_response_flag,
+            num_agents=n,
+        )
+        print("\n" + "=" * 60)
+        print("EXTERNAL MODE PREVIEW: personal_feedback")
+        for i, p in enumerate(prompts):
+            print("-" * 60)
+            print(f"AGENT {i} PROMPT:\n{p}")
+        print("=" * 60 + "\n")
+        return prompts
+
+    supported = ["plain", "passed", "level_feedback", "level_passed", "group_feedback", "personal_feedback"]
     raise NotImplementedError(
         f"External transition mode '{mode}' is not implemented. Supported: {', '.join(supported)}"
     )

@@ -15,7 +15,7 @@ collab:
   num_agents: 3       # used when mode=RAND_PARTITION or TAKE_JOB
 
 external:
-  mode: group_feedback   # plain | passed | level_feedback | level_passed | group_feedback
+  mode: personal_feedback   # plain | passed | level_feedback | level_passed | group_feedback | personal_feedback
   original_prompt: true  # include skeleton and instructions each turn
   previous_response: true  # include previous implementations each turn
 
