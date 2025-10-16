@@ -3,3 +3,7 @@
 
 # Ignore all Python bytecode cache directories
 __pycache__/
+
+# Project directories to ignore
+exploration/
+tests/
