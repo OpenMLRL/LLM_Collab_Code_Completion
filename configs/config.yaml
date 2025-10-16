@@ -32,7 +32,7 @@ trainer:
   max_new_tokens: 512
   temperature: 0.25
   top_p: 0.90
-  num_turns: 2
+  num_turns: 1
   # PPO-related (CoMLRL MAGRPO) options
   # Whether to normalize advantages when updating policy
   # normalize_advantage: true

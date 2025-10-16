@@ -10,7 +10,8 @@ PARTITION="ghx4"
 GPUS=1
 CPUS=64
 MEM="100g"
-TIME="36:00:00"
+# Requested default walltime for ghx4 runs
+TIME="12:00:00"
 
 # Resolve repo root from this script path (scripts/..)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,6 +61,7 @@ fi
 # Optional: direct override for config path
 CONFIG_PATH="${CONFIG_PATH_OVERRIDE:-${REPO_DIR}/${CONFIG_REL}}"
 
+# Build the inner run command (env + python)
 WRAP_CMD="cd ${REPO_DIR} \
 && source \$(conda info --base)/etc/profile.d/conda.sh \
 && source ~/.bashrc \
@@ -70,6 +72,25 @@ WRAP_CMD="cd ${REPO_DIR} \
 && export PYTHONPATH=\"\${PYTHONPATH}:\$(pwd)\" \
 && python3 -u ${TRAIN_REL} --config ${CONFIG_PATH} \
    --override \"${OVERRIDE}\""
+
+# Runner mode: submit (sbatch) or run (srun)
+RUNNER="${RUNNER:-submit}"
+
+if [[ "${RUNNER}" == "run" ]]; then
+  # Interactive/foreground execution with srun (requested flags)
+  srun \
+    --account="${ACCOUNT}" \
+    --partition="${PARTITION}" \
+    --nodes=1 \
+    --gpus-per-node="${GPUS}" \
+    --ntasks=1 \
+    --ntasks-per-node=1 \
+    --cpus-per-task="${CPUS}" \
+    --mem="${MEM}" \
+    --time="${TIME}" \
+    bash -lc "${WRAP_CMD}"
+  exit $?
+fi
 
 sbatch \
   --account="${ACCOUNT}" \
