@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from LLM_Collab_Module_Completion.utils.parse_completion import (
+from LLM_Collab_Code_Completion.utils.parse_completion import (
     extract_method_snippets,
 )
 from .common import (

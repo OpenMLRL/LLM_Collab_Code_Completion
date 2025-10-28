@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
-from LLM_Collab_Module_Completion.utils.parse_completion import (
+from LLM_Collab_Code_Completion.utils.parse_completion import (
     extract_method_snippets,
 )
-from LLM_Collab_Module_Completion.utils.merge import merge_methods_into_skeleton
-from LLM_Collab_Module_Completion.rewards.CE_reward import run_unittests_with_details
-from LLM_Collab_Module_Completion.utils.test_analysis import methods_called_per_test
+from LLM_Collab_Code_Completion.utils.merge import merge_methods_into_skeleton
+from LLM_Collab_Code_Completion.rewards.CE_reward import run_unittests_with_details
+from LLM_Collab_Code_Completion.utils.test_analysis import methods_called_per_test
 from .common import (
     build_agent_context_block,
     build_take_job_context_block,

@@ -222,14 +222,14 @@ if __name__ == "__main__":
 
 # ---------- Reward Factory (multi-agent merge + scoring) ----------
 from typing import Callable  # re-export type for signatures
-from LLM_Collab_Module_Completion.utils.data import (
+from LLM_Collab_Code_Completion.utils.data import (
     extract_class_name,
     extract_incomplete_methods,
 )
-from LLM_Collab_Module_Completion.utils.parse_completion import extract_method_snippets
-from LLM_Collab_Module_Completion.loggers.reward_logger import RewardLogger
-from LLM_Collab_Module_Completion.utils.merge import merge_methods_into_skeleton
-from LLM_Collab_Module_Completion.utils.test_analysis import methods_called_per_test
+from LLM_Collab_Code_Completion.utils.parse_completion import extract_method_snippets
+from LLM_Collab_Code_Completion.loggers.reward_logger import RewardLogger
+from LLM_Collab_Code_Completion.utils.merge import merge_methods_into_skeleton
+from LLM_Collab_Code_Completion.utils.test_analysis import methods_called_per_test
 
 
 def _compute_call_graph_components(source_code: str, class_name: str, methods: Set[str]) -> List[Set[str]]:

@@ -4,7 +4,7 @@ import re
 from typing import Dict, List, Tuple
 try:
     # Optional formatting to normalize tabs/whitespace and optionally autopep8
-    from LLM_Collab_Module_Completion.utils.formatting import (
+    from LLM_Collab_Code_Completion.utils.formatting import (
         normalize_code_for_syntax,
     )
 except Exception:  # pragma: no cover

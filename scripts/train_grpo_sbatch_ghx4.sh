@@ -11,7 +11,7 @@ GPUS=1
 CPUS=64
 MEM="100g"
 # Requested default walltime for ghx4 runs
-TIME="12:00:00"
+TIME="48:00:00"
 
 # Resolve repo root from this script path (scripts/..)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

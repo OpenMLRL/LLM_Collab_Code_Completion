@@ -5,7 +5,7 @@ Utility to log ClassEval reward breakdown (levels) to Weights & Biases.
 
 Usage example (inside rewards/CE_reward.py after computing scores):
 
-    from LLM_Collab_Module_Completion.loggers.reward_logger import RewardLogger
+    from LLM_Collab_Code_Completion.loggers.reward_logger import RewardLogger
 
     # New preferred argument names: cover, overlap, balance
     # (Backwards-compatible: still accepts ceb, syntax, tests)

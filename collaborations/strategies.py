@@ -19,12 +19,12 @@ import hashlib
 import random
 from typing import Any, Dict, List
 
-from LLM_Collab_Module_Completion.utils.data import (
+from LLM_Collab_Code_Completion.utils.data import (
     extract_incomplete_methods,
     extract_class_name,
     _sanitize_python_source,
 )
-from LLM_Collab_Module_Completion.utils.prompting import (
+from LLM_Collab_Code_Completion.utils.prompting import (
     build_agent_prompt,
     build_take_job_prompt,
 )

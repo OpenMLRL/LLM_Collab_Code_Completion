@@ -7,7 +7,7 @@ Supports two collaboration modes:
 
 This script uses CoMLRL's MAGRPOTrainer to handle sampling and PPO-style updates.
 
-Config file: LLM_Collab_Module_Completion/configs/config.yaml
+Config file: LLM_Collab_Code_Completion/configs/config.yaml
 Key parameters:
 - dataset.name:   HF dataset name (e.g., FudanSELab/ClassEval)
 - data.split_ratio: train/eval split ratio (0..1)
@@ -46,32 +46,32 @@ import torch  # type: ignore
 
 from comlrl.trainers.magrpo import MAGRPOConfig, MAGRPOTrainer  # type: ignore
 from comlrl.utils.reward_processor import RewardProcessors  # type: ignore
-from LLM_Collab_Module_Completion.utils.patches import apply_default_patches
-from LLM_Collab_Module_Completion.utils.trainer_args import get_trainer_args
+from LLM_Collab_Code_Completion.utils.patches import apply_default_patches
+from LLM_Collab_Code_Completion.utils.trainer_args import get_trainer_args
 
 # Local utils
-from LLM_Collab_Module_Completion.utils.data import (
+from LLM_Collab_Code_Completion.utils.data import (
     dataset_train_eval_split,
     extract_class_name,
     extract_incomplete_methods,
 )
-from LLM_Collab_Module_Completion.utils.parse_completion import extract_method_snippets
-from LLM_Collab_Module_Completion.utils.merge import merge_methods_into_skeleton
-from LLM_Collab_Module_Completion.utils.test_analysis import (
+from LLM_Collab_Code_Completion.utils.parse_completion import extract_method_snippets
+from LLM_Collab_Code_Completion.utils.merge import merge_methods_into_skeleton
+from LLM_Collab_Code_Completion.utils.test_analysis import (
     methods_called_per_test,
 )
-from LLM_Collab_Module_Completion.rewards.CE_reward import (
+from LLM_Collab_Code_Completion.rewards.CE_reward import (
     get_reward_function,
 )
-from LLM_Collab_Module_Completion.collaborations import (
+from LLM_Collab_Code_Completion.collaborations import (
     get_strategy,
     build_agent_formatters,
 )
-from LLM_Collab_Module_Completion.utils.prompting import (
+from LLM_Collab_Code_Completion.utils.prompting import (
     build_agent_prompt,
 )
 # External transition (multi-turn)
-from LLM_Collab_Module_Completion.external import (
+from LLM_Collab_Code_Completion.external import (
     set_context_resolver as external_set_context_resolver,
     get_external_transition as external_get_transition,
 )

@@ -27,7 +27,7 @@ trainer:
   learning_rate: 1.5e-5
   logging_steps: 50
   save_steps: 200
-  num_generations: 4
+  num_generations: 2
   # Per-agent generation cap; increase if outputs truncate.
   max_new_tokens: 512
   temperature: 0.25
