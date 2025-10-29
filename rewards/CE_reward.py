@@ -228,7 +228,10 @@ from LLM_Collab_Code_Completion.utils.data import (
 )
 from LLM_Collab_Code_Completion.utils.parse_completion import extract_method_snippets
 from LLM_Collab_Code_Completion.loggers.reward_logger import RewardLogger
-from LLM_Collab_Code_Completion.utils.merge import merge_methods_into_skeleton
+from LLM_Collab_Code_Completion.utils.merge import (
+    merge_methods_into_skeleton,
+    build_method_map_with_syntax_selection,
+)
 from LLM_Collab_Code_Completion.utils.test_analysis import methods_called_per_test
 
 
@@ -309,6 +312,7 @@ def _compute_call_graph_components(source_code: str, class_name: str, methods: S
 
 # count rate of passing lv1 + lv2
 _count_total, _count_pass_lv1_2, _count_pass_lv0 = 0, 0, 0
+_count_pass_syntax = 0
 
 def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]:
     """Return a reward function implementing the redesigned lv1+lv2+lv3 scoring.
@@ -364,10 +368,11 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             INF = 1
             _count_total += 1
 
-            # Early penalty: if any agent generated zero functions, assign -2 and skip
+            # Early penalty: penalize by number of agents with zero functions (k * -INF) and skip
             try:
-                if any((len(s) if s is not None else 0) == 0 for s in A_sets):
-                    rewards.append(-INF * 2)
+                zeros = sum(1 for s in A_sets if (len(s) if s is not None else 0) == 0)
+                if zeros > 0:
+                    rewards.append(-INF * 0.5 * zeros)
                     continue
             except Exception:
                 # fall back to normal flow on unexpected structure
@@ -435,19 +440,16 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             lv3 *= discount_lv123
 
             # ---------- Added lv4 (syntax) and lv5 (tests) per prior design ----------
-            # Build merged candidate code from agent completions for syntax/tests evaluation
-            method_to_code: Dict[str, str] = {}
+            # Build merged candidate code from agent completions for syntax/tests evaluation.
+            # For duplicate method names across agents, choose only syntactically valid snippets;
+            # if multiple are valid, pick one at random. Invalid-only methods are omitted.
             try:
-                for agent_idx in range(num_agents):
-                    comp_text = agent_texts[agent_idx] if agent_idx < len(agent_texts) else ""
-                    if getattr(strategy, "self_select", False):
-                        allowed = set(method_names)
-                    else:
-                        allowed = {m for m, a in partition.items() if a == agent_idx}
-                    if not allowed:
-                        continue
-                    snippets = extract_method_snippets(comp_text or "", allowed_methods=allowed)
-                    method_to_code.update(snippets)
+                method_to_code: Dict[str, str] = build_method_map_with_syntax_selection(
+                    agent_texts=agent_texts,
+                    method_names=method_names,
+                    partition=partition,
+                    self_select=bool(getattr(strategy, "self_select", False)),
+                )
             except Exception:
                 method_to_code = {}
 
@@ -467,6 +469,13 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             run_res = run_unittests_with_details(combined_code, test_code)
             syntax_ok = bool(run_res.get("syntax_ok", False))
             lv4 = 2.0 if syntax_ok else 0.0
+
+            # ensure syntax_ok...
+            if not syntax_ok:
+                rewards.append(0)
+                continue
+
+            # _count_pass_syntax += 1
 
             test_results = run_res.get("test_results", []) or []
             num_x_total = 0
@@ -496,6 +505,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             print(lv1, lv2, lv3, lv4, lv5)
             print(_count_pass_lv0 / _count_total)
             print(_count_pass_lv1_2 / _count_total)
+            # print(_count_pass_syntax / _count_total)
 
             # Optional eval logging (reuse field names for compatibility)
             try:

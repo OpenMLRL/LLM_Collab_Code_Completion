@@ -444,9 +444,16 @@ def main():
     # Optional save
     out_cfg = cfg.get("output", {})
     if bool(out_cfg.get("save_final_model", False)):
-        save_path = out_cfg.get("save_path") or os.path.join(
-            os.path.abspath(magrpo_args.output_dir), "final_model"
-        )
+        # Expand [jobid] placeholder if present to mirror wandb/output_dir handling
+        save_path_cfg = out_cfg.get("save_path")
+        if save_path_cfg:
+            try:
+                save_path = _expand_jobid_placeholder(str(save_path_cfg))
+            except Exception:
+                save_path = str(save_path_cfg)
+        else:
+            save_path = os.path.join(os.path.abspath(magrpo_args.output_dir), "final_model")
+
         trainer.save_model(save_path)
         print(f"Model saved to: {save_path}")
 

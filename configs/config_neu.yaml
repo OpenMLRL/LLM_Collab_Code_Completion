@@ -24,7 +24,7 @@ trainer:
   num_train_epochs: 3
   per_device_train_batch_size: 1
   # Learning rate for optimizer (alias: lr)
-  learning_rate: 1.5e-5
+  learning_rate: 2e-5
   logging_steps: 50
   save_steps: 200
   num_generations: 4

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Iterable, Set
+import random
+import ast
 try:
     # Optional formatting to normalize tabs/whitespace and optionally autopep8
     from LLM_Collab_Code_Completion.utils.formatting import (
@@ -156,3 +158,75 @@ def merge_methods_into_skeleton(skeleton: str, class_name: str, method_to_code: 
     except Exception:
         pass
     return merged
+
+
+def _is_syntax_ok(snippet: str) -> bool:
+    """Lightweight syntax check for a standalone function snippet.
+
+    Expects `snippet` to start with 'def <name>(' at column 0.
+    """
+    try:
+        # Using ast.parse avoids executing anything and is sufficient for syntax.
+        ast.parse(snippet)
+        return True
+    except Exception:
+        return False
+
+
+def build_method_map_with_syntax_selection(
+    agent_texts: List[str],
+    method_names: Iterable[str],
+    partition: Dict[str, int],
+    self_select: bool,
+) -> Dict[str, str]:
+    """Collect method snippets from agents and, for duplicates, choose syntactically valid ones.
+
+    - Aggregates candidate snippets per method from each agent according to allowed sets:
+        * If self_select is True: each agent may contribute to any method in `method_names`.
+        * Otherwise: each agent may only contribute methods assigned to it by `partition`.
+    - For a given method, keeps only candidates that pass a syntax check (ast.parse).
+    - If multiple syntactically valid candidates exist, picks one uniformly at random.
+    - If none are valid for a method, that method is omitted (skeleton stub remains).
+    """
+    from LLM_Collab_Code_Completion.utils.parse_completion import extract_method_snippets
+
+    mset: Set[str] = set(method_names or [])
+    if not agent_texts or not mset:
+        return {}
+
+    # Gather candidates: name -> list of code snippets
+    candidates: Dict[str, List[str]] = {m: [] for m in mset}
+
+    for agent_idx, comp_text in enumerate(agent_texts):
+        try:
+            text = comp_text or ""
+        except Exception:
+            text = ""
+        if self_select:
+            allowed = set(mset)
+        else:
+            allowed = {m for m, a in partition.items() if a == agent_idx and m in mset}
+        if not allowed:
+            continue
+        try:
+            snippets = extract_method_snippets(text, allowed_methods=allowed)
+        except Exception:
+            snippets = {}
+        for name, code in (snippets or {}).items():
+            if name in candidates:
+                candidates[name].append(code)
+
+    # Select per method: prefer syntactically valid, random among valids
+    selected: Dict[str, str] = {}
+    for name, opts in candidates.items():
+        if not opts:
+            continue
+        valid_opts = [s for s in opts if _is_syntax_ok(s)]
+        if valid_opts:
+            chosen = random.choice(valid_opts)
+            selected[name] = chosen
+        else:
+            # No syntactically valid option; omit to keep skeleton stub
+            continue
+
+    return selected
