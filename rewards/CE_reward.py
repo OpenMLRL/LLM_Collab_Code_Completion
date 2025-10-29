@@ -393,6 +393,9 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             if coverage_ratio < 0.5:
                 rewards.append(-INF)
                 continue
+            elif coverage_ratio < 0.65:
+                rewards.append(0)
+                continue
             
             lv1 = 2.0 * coverage_ratio
 
@@ -474,6 +477,36 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             if not syntax_ok:
                 rewards.append(0)
                 continue
+
+            # Per-agent syntax penalty: for each agent, check whether
+            # their own generated methods cause a syntax error when
+            # merged alone into the skeleton. For each offending agent,
+            # subtract lv4/num_agents from lv4.
+            try:
+                bad_agents = 0
+                N_agents = int(num_agents) if num_agents else len(agent_texts)
+                allowed = set(method_names)
+                for agent_idx in range(N_agents):
+                    comp_text = agent_texts[agent_idx] if agent_idx < len(agent_texts) else ""
+                    snippets = extract_method_snippets(comp_text or "", allowed_methods=allowed)
+                    if not snippets:
+                        # If no snippets, it was already handled earlier; skip here
+                        continue
+                    agent_map = dict(snippets)
+                    agent_code = merge_methods_into_skeleton(
+                        skeleton=skeleton,
+                        class_name=class_name,
+                        method_to_code=agent_map,
+                    )
+                    try:
+                        compile(agent_code, "<agent>", "exec")
+                    except Exception:
+                        bad_agents += 1
+                if bad_agents > 0 and N_agents > 0 and lv4 > 0.0:
+                    lv4 = max(0.0, float(lv4) - (float(lv4) / float(N_agents)) * float(bad_agents))
+            except Exception:
+                # If anything goes wrong in per-agent checks, fall back to existing lv4
+                pass
 
             # _count_pass_syntax += 1
 
