@@ -36,37 +36,12 @@ from typing import Any, Dict, List, Set
 import io
 import tokenize
 import os
-import re
 
 
-def _load_max_new_tokens_fast() -> int:
-    """Best-effort, fast parsing of max_new_tokens from the default config.
-
-    Avoids importing YAML; scans for a line like "max_new_tokens: <int>".
-    Falls back to 512 on any error.
-    """
-    cfg_paths = [
-        os.path.join("LLM_Collab_Code_Completion", "configs", "config.yaml"),
-    ]
-    for p in cfg_paths:
-        try:
-            with open(p, "r", encoding="utf-8") as fh:
-                for line in fh:
-                    if "max_new_tokens" in line and ":" in line:
-                        # Extract integer part after colon
-                        try:
-                            val = re.split(r"\s*:\s*", line.strip(), maxsplit=1)[1]
-                            # Strip trailing comments if any
-                            val = val.split("#", 1)[0].strip()
-                            return int(val)
-                        except Exception:
-                            continue
-        except Exception:
-            continue
-    return 512
-
-
-_MAX_NEW_TOKENS = _load_max_new_tokens_fast()
+from LLM_Collab_Code_Completion.utils.text_tools import (
+    count_new_tokens,
+    get_effective_max_new_tokens,
+)
 
 def _combine_code(impl_code: str, test_code: str) -> str:
     return (impl_code or "").rstrip() + "\n\n" + (test_code or "").lstrip()
@@ -515,27 +490,50 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 rewards.append(-INF)
                 continue
 
-            # Piecewise quadratic for lv2:
-            # - Left branch (unchanged): concave-down parabola passing (0,-1), (V,2), (2V,-1)
-            #     lv2_left(S) = 2 - 3 * ((S - V)^2) / V^2
-            # - Right branch (updated): concave-down with vertex at (V,2), passing (2V+1,-1)
-            #     lv2_right(S) = 2 - 3 * ((S - V)^2) / (V + 1)^2
-            if V > 0:
-                if S_total <= V:
-                    dv = float(S_total) - float(V)
-                    lv2 = 2.0 - 3.0 * (dv * dv) / (float(V) * float(V))
-                elif S_total <= V * 2 + 1:
-                    # Right branch: vertex at x=V, passing (2V+1, -1)
-                    # p(S) = 2 - 3 * ((S - V)^2) / (V + 1)^2
-                    dv = float(S_total) - float(V)
-                    lv2 = 2.0 - 3.0 * (dv * dv) / float((V + 1) * (V + 1))
-                elif S_total == V * 2 + 2:
-                    lv2 = -2.5
-            else:
-                lv2 = -2.0 * INF
-           
-            # get bonus after passing lv1, lv2
-            # lv_bonus = 0.2
+            # Piecewise quadratic for lv2 (total picks control)
+            # - Left branch: lv2_left(S) = 2 - 3 * ((S - V)^2) / V^2
+            # - Right branch: lv2_right(S) = 2 - 3 * ((S - V)^2) / (V + 1)^2
+            # if V > 0:
+            #     if S_total <= V:
+            #         dv = float(S_total) - float(V)
+            #         lv2 = 2.0 - 3.0 * (dv * dv) / (float(V) * float(V))
+            #     elif S_total <= V * 2 + 1:
+            #         dv = float(S_total) - float(V)
+            #         lv2 = 2.0 - 3.0 * (dv * dv) / float((V + 1) * (V + 1))
+            #     elif S_total == V * 2 + 2:
+            #         lv2 = -2.5
+            #     else:
+            #         lv2 = -2.0 * INF
+            # else:
+            #     lv2 = -2.0 * INF
+
+            # Add Pairwise Jaccard penalty (mean) into lv2, mapped to [-2, 2]
+            # J(A_i, A_j) = |A_i ∩ A_j| / |A_i ∪ A_j|, averaged over all unordered pairs.
+            # Map mean_J in [0,1] to term T in [-2,2] via T = 2 * (1 - 2*mean_J).
+            try:
+                N_pairs = 0
+                sum_J = 0.0
+                N_sets = len(A_sets)
+                for p in range(N_sets):
+                    Si = A_sets[p] or set()
+                    for q in range(p + 1, N_sets):
+                        Sj = A_sets[q] or set()
+                        u = len(Si | Sj)
+                        if u == 0:
+                            J = 0.0
+                        else:
+                            J = len(Si & Sj) / float(u)
+                        sum_J += J
+                        N_pairs += 1
+                mean_J = (sum_J / N_pairs) if N_pairs > 0 else 0.0
+                jaccard_term = 2.0 * (1.0 - 2.0 * mean_J)
+                if jaccard_term > 2.0:
+                    jaccard_term = 2.0
+                elif jaccard_term < -2.0:
+                    jaccard_term = -2.0
+                lv2 += jaccard_term
+            except Exception:
+                pass
 
             # lv3: balance via MSD of chosen set sizes
             N = max(1, int(num_agents))
@@ -595,17 +593,26 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 N_agents = int(num_agents) if num_agents else max(1, len(agent_texts))
                 # Allow override via env; else use parsed config value
                 try:
-                    L = int(os.environ.get("CLASSEVAL_MAX_NEW_TOKENS", _MAX_NEW_TOKENS))
+                    L = int(os.environ.get("CLASSEVAL_MAX_NEW_TOKENS", get_effective_max_new_tokens()))
                 except Exception:
-                    L = _MAX_NEW_TOKENS
+                    L = get_effective_max_new_tokens()
                 a = (float(L) - 1.0) / 2.0
                 if a > 0.0 and N_agents > 0 and base_lv4 > 0.0:
                     k = (base_lv4 / float(N_agents)) / (a * a)
                     total_penalty = 0.0
                     for agent_idx in range(N_agents):
                         comp_text = agent_texts[agent_idx] if agent_idx < len(agent_texts) else ""
-                        # Fast proxy for token count: whitespace-split length
-                        x = float(len((comp_text or "").split()))
+                        # Prefer actual token count via HF tokenizer; fallback heuristic otherwise
+                        try:
+                            x_int = count_new_tokens(comp_text or "")
+                        except Exception:
+                            x_int = len((comp_text or "").split())
+                        # Clamp to [0, L-1] per definition
+                        if x_int < 0:
+                            x_int = 0
+                        if x_int > (L - 1):
+                            x_int = (L - 1)
+                        x = float(x_int)
                         if x >= a:
                             y = -k * (x - a) * (x - a)
                             # Cap per-agent penalty at [-base_lv4/N_agents, 0]

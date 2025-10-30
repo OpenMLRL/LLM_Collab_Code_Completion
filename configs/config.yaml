@@ -29,7 +29,7 @@ trainer:
   save_steps: 200
   num_generations: 3
   # Per-agent generation cap; increase if outputs truncate.
-  max_new_tokens: 650
+  max_new_tokens: 660
   temperature: 0.25
   top_p: 0.90
   num_turns: 1
