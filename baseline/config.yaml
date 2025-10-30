@@ -5,7 +5,8 @@ model:
   # - Qwen/Qwen2.5-3B
   # - Qwen/Qwen3-8B
   # - Qwen/Qwen3-1.7B
-  name: Qwen/Qwen3-8B
+  # - Qwen/Qwen2.5-Coder-3B-Instruct
+  name: Qwen/Qwen2.5-Coder-3B-Instruct
   dtype: auto         # auto | float16 | bfloat16 | float32
   device_map: auto    # auto | cpu | cuda
   max_new_tokens: 4096

@@ -33,7 +33,40 @@ import subprocess
 import sys
 import tempfile
 from typing import Any, Dict, List, Set
+import io
+import tokenize
 import os
+import re
+
+
+def _load_max_new_tokens_fast() -> int:
+    """Best-effort, fast parsing of max_new_tokens from the default config.
+
+    Avoids importing YAML; scans for a line like "max_new_tokens: <int>".
+    Falls back to 512 on any error.
+    """
+    cfg_paths = [
+        os.path.join("LLM_Collab_Code_Completion", "configs", "config.yaml"),
+    ]
+    for p in cfg_paths:
+        try:
+            with open(p, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    if "max_new_tokens" in line and ":" in line:
+                        # Extract integer part after colon
+                        try:
+                            val = re.split(r"\s*:\s*", line.strip(), maxsplit=1)[1]
+                            # Strip trailing comments if any
+                            val = val.split("#", 1)[0].strip()
+                            return int(val)
+                        except Exception:
+                            continue
+        except Exception:
+            continue
+    return 512
+
+
+_MAX_NEW_TOKENS = _load_max_new_tokens_fast()
 
 def _combine_code(impl_code: str, test_code: str) -> str:
     return (impl_code or "").rstrip() + "\n\n" + (test_code or "").lstrip()
@@ -221,6 +254,82 @@ if __name__ == "__main__":
 
 
 # ---------- Reward Factory (multi-agent merge + scoring) ----------
+def _is_triple_quoted_string_literal(s: str) -> bool:
+    """Heuristic check if a token string is triple-quoted (handles prefixes rRuUbBfF)."""
+    i = 0
+    while i < len(s) and s[i] in 'rRbBuUfF':
+        i += 1
+    if i + 2 < len(s) and s[i] in ("'", '"') and s[i] == s[i+1] == s[i+2]:
+        return True
+    return False
+
+
+def _docstring_line_indices(text: str) -> Set[int]:
+    """Return 1-based line numbers that belong to triple-quoted string literals.
+
+    Tries tokenize first for accuracy; falls back to a simple delimiter scan
+    if tokenization fails.
+    """
+    doc_lines: Set[int] = set()
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type == tokenize.STRING and _is_triple_quoted_string_literal(tok.string):
+                start_line = tok.start[0]
+                end_line = tok.end[0]
+                for ln in range(start_line, end_line + 1):
+                    doc_lines.add(ln)
+        return doc_lines
+    except Exception:
+        # Fallback: naive scanning for """ or ''' blocks
+        pass
+
+    lines = text.splitlines()
+    in_triple = False
+    delim = None
+    for idx, line in enumerate(lines, start=1):
+        j = 0
+        found_segment = False
+        L = len(line)
+        while j + 2 < L:
+            seg = line[j:j+3]
+            if not in_triple and (seg == '"""' or seg == "'''"):
+                in_triple = True
+                delim = seg
+                found_segment = True
+                j += 3
+                continue
+            if in_triple and seg == delim:
+                in_triple = False
+                delim = None
+                found_segment = True
+                j += 3
+                continue
+            j += 1
+        if in_triple or found_segment:
+            doc_lines.add(idx)
+    return doc_lines
+
+
+def _compute_comment_ratio_including_docstrings(text: str) -> float:
+    """Compute comment ratio counting both # lines and triple-quoted blocks.
+
+    Ratio = comment_like_nonempty_lines / total_nonempty_lines. Lines inside
+    triple-quoted strings (three double quotes or three single quotes) are counted as comment-like.
+    """
+    if not text:
+        return 0.0
+    lines = text.splitlines()
+    doc_lines = _docstring_line_indices(text)
+    nonempty_total = 0
+    comment_like = 0
+    for idx, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        nonempty_total += 1
+        if line.lstrip().startswith('#') or (idx in doc_lines):
+            comment_like += 1
+    return (comment_like / nonempty_total) if nonempty_total > 0 else 0.0
+
 from typing import Callable  # re-export type for signatures
 from LLM_Collab_Code_Completion.utils.data import (
     extract_class_name,
@@ -478,34 +587,37 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 rewards.append(0)
                 continue
 
-            # Per-agent syntax penalty: for each agent, check whether
-            # their own generated methods cause a syntax error when
-            # merged alone into the skeleton. For each offending agent,
-            # subtract lv4/num_agents from lv4.
+            # Per-agent length penalty based on max_new_tokens L from config:
+            # For each agent with output token count x, define a parabola with axis at a=(L-1)/2,
+            # passing through ((L-1)/2, 0) and (L-1, -lv4/num_agents). When x < a, penalty is 0.
             try:
-                bad_agents = 0
-                N_agents = int(num_agents) if num_agents else len(agent_texts)
-                allowed = set(method_names)
-                for agent_idx in range(N_agents):
-                    comp_text = agent_texts[agent_idx] if agent_idx < len(agent_texts) else ""
-                    snippets = extract_method_snippets(comp_text or "", allowed_methods=allowed)
-                    if not snippets:
-                        # If no snippets, it was already handled earlier; skip here
-                        continue
-                    agent_map = dict(snippets)
-                    agent_code = merge_methods_into_skeleton(
-                        skeleton=skeleton,
-                        class_name=class_name,
-                        method_to_code=agent_map,
-                    )
-                    try:
-                        compile(agent_code, "<agent>", "exec")
-                    except Exception:
-                        bad_agents += 1
-                if bad_agents > 0 and N_agents > 0 and lv4 > 0.0:
-                    lv4 = max(0.0, float(lv4) - (float(lv4) / float(N_agents)) * float(bad_agents))
+                base_lv4 = float(lv4)
+                N_agents = int(num_agents) if num_agents else max(1, len(agent_texts))
+                # Allow override via env; else use parsed config value
+                try:
+                    L = int(os.environ.get("CLASSEVAL_MAX_NEW_TOKENS", _MAX_NEW_TOKENS))
+                except Exception:
+                    L = _MAX_NEW_TOKENS
+                a = (float(L) - 1.0) / 2.0
+                if a > 0.0 and N_agents > 0 and base_lv4 > 0.0:
+                    k = (base_lv4 / float(N_agents)) / (a * a)
+                    total_penalty = 0.0
+                    for agent_idx in range(N_agents):
+                        comp_text = agent_texts[agent_idx] if agent_idx < len(agent_texts) else ""
+                        # Fast proxy for token count: whitespace-split length
+                        x = float(len((comp_text or "").split()))
+                        if x >= a:
+                            y = -k * (x - a) * (x - a)
+                            # Cap per-agent penalty at [-base_lv4/N_agents, 0]
+                            lower_cap = -base_lv4 / float(N_agents)
+                            if y < lower_cap:
+                                y = lower_cap
+                            if y > 0.0:
+                                y = 0.0
+                            total_penalty += y
+                    lv4 = float(lv4) + total_penalty
             except Exception:
-                # If anything goes wrong in per-agent checks, fall back to existing lv4
+                # On any parsing/calculation issues, leave lv4 unchanged
                 pass
 
             # _count_pass_syntax += 1
@@ -566,7 +678,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             # Preview generations: print each agent's code and number of functions parsed
             try:
-                preview_limit = 40000
+                preview_limit = 5000
                 task_id = example.get("task_id")
                 header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
                 print(header, flush=True)
