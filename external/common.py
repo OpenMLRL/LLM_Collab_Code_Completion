@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import textwrap
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 
 def build_agent_context_block(
@@ -77,3 +77,32 @@ def join_previous_impls(snippets: List[str]) -> str:
     body = "\n\n".join((s or "").strip() for s in snippets if s and s.strip())
     return body if body else "<no implementation found>"
 
+
+def render_history_block_for_agent(
+    agent_idx: int,
+    *,
+    prompt_history_per_agent: Optional[List[List[str]]] = None,
+    response_history_per_agent: Optional[List[List[str]]] = None,
+) -> str:
+    """Render a readable history block for one agent.
+
+    - Lists all previous prompts for that agent (Turn 1..T)
+    - Lists all previous responses for that agent (Turn 1..T)
+    Returns an empty string if there is no history.
+    """
+    lines: List[str] = []
+    if prompt_history_per_agent and 0 <= agent_idx < len(prompt_history_per_agent):
+        ph = prompt_history_per_agent[agent_idx] or []
+        if ph:
+            lines.append("History: previous prompts:")
+            for t, p in enumerate(ph, start=1):
+                lines.append(f"- Turn {t} prompt:\n{p}")
+            lines.append("")
+    if response_history_per_agent and 0 <= agent_idx < len(response_history_per_agent):
+        rh = response_history_per_agent[agent_idx] or []
+        if rh:
+            lines.append("History: your previous responses:")
+            for t, r in enumerate(rh, start=1):
+                lines.append(f"- Turn {t} response:\n{r}")
+            lines.append("")
+    return "\n".join(lines).rstrip()

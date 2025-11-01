@@ -71,6 +71,10 @@ def get_external_transition(
     agent_completions: Union[List[str], Tuple[str, ...]],
     num_agents: int = 2,
     mode: str = "plain",
+    *,
+    # Per-agent history provided by CoMLRL (full history by default)
+    prompt_history_per_agent: Optional[List[List[str]]] = None,
+    response_history_per_agent: Optional[List[List[str]]] = None,
     **kwargs,
 ) -> Union[List[str], Tuple[str, ...]]:
     """Build next‑turn prompts per agent for ClassEval.
@@ -114,6 +118,12 @@ def get_external_transition(
     original_prompt_flag = kwargs.get("original_prompt", True)
     previous_response_flag = kwargs.get("previous_response", True)
 
+    # Normalize histories (full history: all previous prompts/responses per agent)
+    if prompt_history_per_agent is None:
+        prompt_history_per_agent = [[] for _ in range(n)]
+    if response_history_per_agent is None:
+        response_history_per_agent = [[] for _ in range(n)]
+
     # Route to mode implementation
     mode_key = (mode or "").lower()
 
@@ -127,6 +137,8 @@ def get_external_transition(
             original_prompt_flag=original_prompt_flag,
             previous_response_flag=previous_response_flag,
             num_agents=n,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
         )
         print("\n" + "=" * 60)
         print("EXTERNAL MODE PREVIEW: plain")
@@ -147,6 +159,8 @@ def get_external_transition(
             original_prompt_flag=original_prompt_flag,
             previous_response_flag=previous_response_flag,
             num_agents=n,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
         )
         print("\n" + "=" * 60)
         print("EXTERNAL MODE PREVIEW: passed")
@@ -167,6 +181,8 @@ def get_external_transition(
             original_prompt_flag=original_prompt_flag,
             previous_response_flag=previous_response_flag,
             num_agents=n,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
         )
         print("\n" + "=" * 60)
         print("EXTERNAL MODE PREVIEW: level_feedback")
@@ -187,6 +203,8 @@ def get_external_transition(
             original_prompt_flag=original_prompt_flag,
             previous_response_flag=previous_response_flag,
             num_agents=n,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
         )
         print("\n" + "=" * 60)
         print("EXTERNAL MODE PREVIEW: level_passed")
@@ -207,6 +225,8 @@ def get_external_transition(
             original_prompt_flag=original_prompt_flag,
             previous_response_flag=previous_response_flag,
             num_agents=n,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
         )
         print("\n" + "=" * 60)
         print("EXTERNAL MODE PREVIEW: group_feedback")
@@ -227,6 +247,8 @@ def get_external_transition(
             original_prompt_flag=original_prompt_flag,
             previous_response_flag=previous_response_flag,
             num_agents=n,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
         )
         print("\n" + "=" * 60)
         print("EXTERNAL MODE PREVIEW: personal_feedback")

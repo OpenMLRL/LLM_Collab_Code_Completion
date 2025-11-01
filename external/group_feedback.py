@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 from LLM_Collab_Code_Completion.utils.parse_completion import (
     extract_method_snippets,
@@ -11,6 +11,7 @@ from .common import (
     build_agent_context_block,
     build_take_job_context_block,
     join_previous_impls,
+    render_history_block_for_agent,
 )
 
 
@@ -59,6 +60,9 @@ def format_followup_prompts(
     original_prompt_flag: bool = True,
     previous_response_flag: bool = True,
     num_agents: int = 2,
+    *,
+    prompt_history_per_agent: Optional[List[List[str]]] = None,
+    response_history_per_agent: Optional[List[List[str]]] = None,
 ) -> List[str]:
     """Group feedback mode: show merged code snapshot, per-agent counts, and test signals."""
     n = int(num_agents)
@@ -99,6 +103,14 @@ def format_followup_prompts(
             )
 
         parts: List[str] = []
+        # Always include full per-agent history
+        hist = render_history_block_for_agent(
+            i,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
+        )
+        if hist:
+            parts.extend([hist, ""])  # history + blank
         if original_prompt_flag:
             parts.extend([base, ""])  # context + blank
 
