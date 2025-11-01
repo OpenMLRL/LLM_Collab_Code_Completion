@@ -310,8 +310,18 @@ def main():
                 dir_val = _expand_jobid_placeholder(str(dir_val))
             except Exception:
                 dir_val = str(dir_val)
-        # Force a concise, informative run name: CE_[num_agents]agents_[strategy]
-        run_name = f"CE_{num_agents}agents_{collab_mode}"
+        # Build informative run name: CE_[num_agents]agents_[strategy]_[turns]
+        # When multi-turn, also include external mode, e.g., _2t_level_feedback
+        try:
+            num_turns_val = int(getattr(magrpo_args, "num_turns", 1))
+        except Exception:
+            num_turns_val = 1
+        ext_mode = str((cfg.get("external", {}) or {}).get("mode", "")).strip()
+        if num_turns_val <= 1:
+            turn_suffix = f"_{num_turns_val}t"
+        else:
+            turn_suffix = f"_{num_turns_val}t_{(ext_mode or 'external').lower()}"
+        run_name = f"CE_{num_agents}agents_{collab_mode}{turn_suffix}"
         wandb_config = {
             "project": wandb_cfg.get("project", "classeval"),
             "entity": wandb_cfg.get("entity", None),
