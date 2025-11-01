@@ -510,6 +510,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             # Add Pairwise Jaccard penalty (mean) into lv2, mapped to [-2, 2]
             # J(A_i, A_j) = |A_i ∩ A_j| / |A_i ∪ A_j|, averaged over all unordered pairs.
             # Map mean_J in [0,1] to term T in [-2,2] via T = 2 * (1 - 2*mean_J).
+            lv2 = 0
             try:
                 N_pairs = 0
                 sum_J = 0.0
@@ -526,11 +527,11 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                         sum_J += J
                         N_pairs += 1
                 mean_J = (sum_J / N_pairs) if N_pairs > 0 else 0.0
-                jaccard_term = 2.0 * (1.0 - 2.0 * mean_J)
-                if jaccard_term > 2.0:
-                    jaccard_term = 2.0
-                elif jaccard_term < -2.0:
-                    jaccard_term = -2.0
+                jaccard_term = 1.0 * (1.0 - 1.5 * mean_J)
+                # if jaccard_term > 2.0:
+                #     jaccard_term = 2.0
+                # elif jaccard_term < -2.0:
+                #     jaccard_term = -2.0
                 lv2 += jaccard_term
             except Exception:
                 pass
@@ -622,7 +623,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                             if y > 0.0:
                                 y = 0.0
                             total_penalty += y
-                    lv4 = float(lv4) + total_penalty
+                    lv4 = float(lv4) + total_penalty * 0.6
             except Exception:
                 # On any parsing/calculation issues, leave lv4 unchanged
                 pass

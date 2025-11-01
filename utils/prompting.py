@@ -67,26 +67,20 @@ def build_take_job_prompt(
         f"""
         You are one of {n} collaborating agents tasked with implementing the Python class '{class_name}'.
 
-        Below is the full class skeleton and the set {v_braced} of target methods that require implementation. Choose a **non-empty, proper subset** of {v_braced} (i.e., not all of {v_braced}), aiming for roughly {target_count} methods to balance workload and avoid overlap.
+        Below is the full class skeleton and the set {v_braced} of target methods that require implementation.
 
         Target methods (Total of {total_methods}):
         {methods_text}
 
         Important output rules:
-        - Output **only** the chosen methods as Python function definitions **with full bodies**.
-        - Put **all** functions in **one** fenced code block: ``` ... ```
-        - **Do not** output the class header, any imports, or any text outside the code block.
-        - **Do not** include any comments or docstrings in the code (no `# ...` comments and no `\"\"\"...\"\"\"` or `'''...'''` docstrings).
-        - Use the **exact** signatures from the skeleton: names, parameters, defaults, type hints, and any decorators (@staticmethod/@classmethod).
-        - Implement real, runnable logic; **no** `pass`, `...`, `TODO`, or placeholder returns.
-        - Function names must be **only** from {v_braced}; prefer the order they appear in {v_braced}.
-        - Any helper logic must live **inside** the selected methods; do not add new top-level functions/classes/fields.
-
+        - You must only generate pure Python code without any other words (your output must be executable Python code).
+        - Please place the code within the code block. (```python)
+        - Do NOT include any text before or after the code (no explanations, no comments outside the code).
+        - Choose a **non-empty, proper subset** of {v_braced}, aiming for roughly {target_count} methods to complete. (This is very important!)
+        
         SKELETON START
         {skeleton.strip()}
         SKELETON END
-
-        To reiterate, the code you generate should not print the comments contained within the SKELETON. (This is very important!)
         """
     ).strip()
 
