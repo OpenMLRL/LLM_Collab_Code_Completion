@@ -31,6 +31,8 @@ from . import level_feedback
 from . import level_passed
 from . import group_feedback
 from . import personal_feedback
+from . import personal_detailed_feedback
+from . import token_report
 
 # Verbose toggle for external previews
 VERBOSE = True
@@ -258,7 +260,60 @@ def get_external_transition(
         print("=" * 60 + "\n")
         return prompts
 
-    supported = ["plain", "passed", "level_feedback", "level_passed", "group_feedback", "personal_feedback"]
+    if mode_key == "personal_detailed_feedback":
+        prompts = personal_detailed_feedback.format_followup_prompts(
+            skeleton=skeleton,
+            class_name=class_name,
+            method_names=method_names,
+            assignments=assignments,
+            agent_completions=list(agent_completions),
+            test_code=test_code,
+            original_prompt_flag=original_prompt_flag,
+            previous_response_flag=previous_response_flag,
+            num_agents=n,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
+        )
+        print("\n" + "=" * 60)
+        print("EXTERNAL MODE PREVIEW: personal_detailed_feedback")
+        for i, p in enumerate(prompts):
+            print("-" * 60)
+            print(f"AGENT {i} PROMPT:\n{p}")
+        print("=" * 60 + "\n")
+        return prompts
+
+    if mode_key == "token_report":
+        prompts = token_report.format_followup_prompts(
+            skeleton=skeleton,
+            class_name=class_name,
+            method_names=method_names,
+            assignments=assignments,
+            agent_completions=list(agent_completions),
+            test_code=test_code,
+            original_prompt_flag=original_prompt_flag,
+            previous_response_flag=previous_response_flag,
+            num_agents=n,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
+        )
+        print("\n" + "=" * 60)
+        print("EXTERNAL MODE PREVIEW: token_report")
+        for i, p in enumerate(prompts):
+            print("-" * 60)
+            print(f"AGENT {i} PROMPT:\n{p}")
+        print("=" * 60 + "\n")
+        return prompts
+
+    supported = [
+        "plain",
+        "passed",
+        "level_feedback",
+        "level_passed",
+        "group_feedback",
+        "personal_feedback",
+        "personal_detailed_feedback",
+        "token_report",
+    ]
     raise NotImplementedError(
         f"External transition mode '{mode}' is not implemented. Supported: {', '.join(supported)}"
     )
