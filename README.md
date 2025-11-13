@@ -1,9 +1,7 @@
 # LLM Collaboration - Code Completion
 
 This repository hosts the ClassEval collaborative code-completion environment that
-extends the [CoMLRL](../CoMLRL/README.md) multi-agent training library. It mirrors
-the structure of [`LLM_Collab_Code_Generation`](../LLM_Collab_Code_Generation/README.md)
-but focuses on class-level completions instead of standalone problems.
+extends the [CoMLRL](../CoMLRL/README.md) multi-agent training library. It focuses on class-level completions instead of standalone problems.
 
 ## Overview
 
