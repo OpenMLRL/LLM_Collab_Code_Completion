@@ -7,3 +7,4 @@ __pycache__/
 # Project directories to ignore
 exploration/
 tests/
+scripts/
