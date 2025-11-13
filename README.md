@@ -28,8 +28,8 @@ but focuses on class-level completions instead of standalone problems.
 | `external/` | Multi-turn feedback adapters (`token_report`, `plain`, `level_feedback`, `group/personal_feedback`, etc.). |
 | `rewards/CE_reward.py` | Reward computation + subprocess-based unittest runner. |
 | `utils/` | Data sanitizers, prompt builders, merge/parsing helpers, trainer arg builders, text utilities. |
-| `tests/` | Reward-surface calculators and unit tests (`pytest`) for parsing, reward curves, and utilities. |
-| `scripts/` | SLURM helpers for launching long-running GRPO jobs on GPUs. |
+| *(reward utilities)* | Reward-surface calculators and unit tests (`pytest`) for parsing, reward curves, and utilities. |
+| *(job templates)* | SLURM helper templates for launching long-running GRPO jobs on GPUs. |
 
 ## Dataset: ClassEval
 
@@ -70,9 +70,9 @@ Notes:
 
 ### Batch/Cluster Jobs
 
-For SLURM-based clusters, start from `scripts/train_grpo_sbatch.sh` (standard) or
-`scripts/train_grpo_sbatch_ghx4.sh` (4xH100 layout). Edit the script to point to your
-conda env, node partition, and config file, mirroring the workflow from the code-generation repo.
+For SLURM-based clusters, reuse the provided sbatch templates (standard or 4xH100 layouts)
+and edit them to point to your conda env, node partition, and config file, mirroring the
+workflow from the code-generation repo.
 
 ## Configuration Reference
 
@@ -119,8 +119,8 @@ Key sections in `configs/config.yaml`:
 
 ## Development & Testing
 
-- Unit tests live in `tests/` and can be run via `pytest`. The reward visualizers under
-  `tests/calc_reward_*` are handy for understanding the shaping landscape before training.
+- Unit tests ship with reward visualizers (run them with `pytest`). The `calc_reward_*`
+  tools are handy for understanding the shaping landscape before training.
 - Utility modules (parsers, mergers, prompt builders) are deterministic and covered by
   quick tests so you can modify them confidently.
 - Use the same contribution practices as the CoMLRL repo (pre-commit, lint, etc.) when
