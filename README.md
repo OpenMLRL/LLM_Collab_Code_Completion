@@ -16,6 +16,17 @@ extends the [CoMLRL](../CoMLRL/README.md) multi-agent training library. It focus
 - **Rewards**: multi-level shaping (`CE_reward.py`) that balances coverage, efficiency,
   load balancing, syntax, and unit tests before a final reward is reported to the trainer.
 
+## Extra requirements
+
+Use the same environment settings as the upstream CoMLRL projects before running any
+training or tests:
+
+```sh
+conda activate comlrl
+conda install -c conda-forge pypdf2 gensim openpyxl python-docx
+pytest
+```
+
 ## Repository Map
 
 | Path | Description |
@@ -131,11 +142,4 @@ Key sections in `configs/config.yaml`:
 - [ClassEval dataset](https://huggingface.co/datasets/FudanSELab/ClassEval)
 - [LLM Collaboration - Code Generation README](../LLM_Collab_Code_Generation/README.md)
 
-## Extra requirements
 
-```sh
-conda activate comlrl
-conda install -c conda-forge pypdf2 gensim openpyxl python-docx
-```
-
-pytest
