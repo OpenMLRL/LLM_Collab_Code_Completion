@@ -117,7 +117,7 @@ def format_followup_prompts(
 
         # 4) Closing instruction
         parts.append(
-            "Revise your previous code. Keep your chosen targets consistent and improve correctness. Output ONLY the function definitions for those targets."
+            "Revise your previous code. Keep your chosen methods consistent and improve correctness. If you reach the maximum new token limit, please shorten your code."
         )
 
         prompts[i] = "\n".join(parts)

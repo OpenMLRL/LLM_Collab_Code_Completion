@@ -15,12 +15,12 @@ collab:
   num_agents: 3       # used when mode=TAKE_JOB
 
 external:
-  mode: token_report   # plain | passed | level_feedback | level_passed | group_feedback | personal_feedback | personal_detailed_feedback
+  mode: plain   # plain | passed | level_feedback | level_passed | group_feedback | personal_feedback | personal_detailed_feedback
   original_prompt: true  # include skeleton and instructions each turn
   previous_response: true  # include previous implementations each turn
 
 trainer:
-  output_dir: /projects/bevi/tchen19/output/CE/[jobid]
+  output_dir: TODO  # trainer output/checkpoint directory (set via scripts/train_grpo_sbatch_ghx4.sh)
   num_train_epochs: 5
   per_device_train_batch_size: 1
   # Learning rate for optimizer (alias: lr)
@@ -48,13 +48,13 @@ wandb:
   enabled: true
   project: classeval
   entity: null
-  output_dir: /projects/bevi/tchen19/output/CE/[jobid]/wandb
+  output_dir: TODO  # directory for local W&B files (set via scripts/train_grpo_sbatch_ghx4.sh)
 
 output:
   save_final_model: true
-  save_path: /projects/bevi/tchen19/output/CE/[jobid]/output
+  save_path: TODO  # final merged policy/model output path (set via scripts/train_grpo_sbatch_ghx4.sh)
   keep_tmp: true
-  tmp_base_dir: /projects/bevi/tchen19/output/CE/[jobid]/tmp
+  tmp_base_dir: TODO  # scratch dir for code execution artifacts (set via scripts/train_grpo_sbatch_ghx4.sh)
 
 fixed_seed: false   # when false, seed is randomized at runtime
 seed: 42           # used only when fixed_seed=true

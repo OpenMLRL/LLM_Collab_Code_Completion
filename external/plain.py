@@ -95,7 +95,7 @@ def format_followup_prompts(
             )
         else:
             closing = (
-                f"Revise your code. Aim for ~{max(1, target_count)} method(s)."
+                f"Please revise your code."
             )
         parts.append(closing)
         prompts[i] = "\n".join(parts)
