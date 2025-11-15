@@ -1,7 +1,7 @@
 # LLM Collaboration - Code Completion
 
-This repository hosts the ClassEval collaborative code-completion environment that
-extends the [CoMLRL](../CoMLRL/README.md) multi-agent training library. It focuses on class-level completions instead of standalone problems.
+This repository hosts the ClassEval collaborative code-completion experiments for the CoMLRL project (https://github.com/OpenMLRL/CoMLRL) and extends the shared multi-agent training library.
+It focuses on class-level completions instead of standalone problems.
 
 ## Overview
 
@@ -141,5 +141,4 @@ Key sections in `configs/config.yaml`:
 - [CoMLRL GitHub](https://github.com/OpenMLRL/CoMLRL)
 - [ClassEval dataset](https://huggingface.co/datasets/FudanSELab/ClassEval)
 - [LLM Collaboration - Code Generation README](../LLM_Collab_Code_Generation/README.md)
-
 
