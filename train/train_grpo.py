@@ -63,7 +63,7 @@ from LLM_Collab_Code_Completion.utils.test_analysis import (
 from LLM_Collab_Code_Completion.rewards.CE_reward import (
     get_reward_function,
 )
-from LLM_Collab_Code_Completion.collaborations import (
+from LLM_Collab_Code_Completion.train.strategies import (
     get_strategy,
     build_agent_formatters,
 )
