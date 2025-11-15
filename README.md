@@ -1,7 +1,15 @@
 # LLM Collaboration - Code Completion
 
-This repository hosts the ClassEval collaborative code-completion experiments for the CoMLRL project (https://github.com/OpenMLRL/CoMLRL) and extends the shared multi-agent training library.
-It focuses on class-level completions instead of standalone problems.
+This repo provides the extended environments for [**CoMLRL**](https://github.com/OpenMLRL/CoMLRL).
+
+## Installation
+
+You can install [**CoMLRL**](https://github.com/OpenMLRL/CoMLRL) from PyPI or conda-forge:
+
+```bash
+pip install comlrl
+conda install -c conda-forge comlrl
+```
 
 ## Overview
 
