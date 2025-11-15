@@ -8,4 +8,5 @@ __pycache__/
 exploration/
 tests/
 scripts/
+baseline/
 .idea/*
