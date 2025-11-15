@@ -38,7 +38,7 @@ Key sections in `configs/config.yaml`:
   kwargs, and device mapping.
 - `data`: dataset name and split ratio; customize when experimenting with different ClassEval
   sub-splits or local mirrors.
-- `collab`: choose `ONE`, `RAND_PARTITION`, or `TAKE_JOB` and set `num_agents`.
+- `collab`: choose `ONE` or `TAKE_JOB` and set `num_agents` (for TAKE_JOB).
 - `external`: determines the feedback mode. `token_report` summarizes syntax/tests at each
   turn; other modes replicate the options documented in the code-generation README
   (`plain`, `level_feedback`, `group_feedback`, `personal_feedback`, `personal_detailed_feedback`,

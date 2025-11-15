@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import random
 import re
 from typing import Any, Dict, Iterable, List, Mapping, Sequence, Tuple
@@ -142,11 +141,6 @@ def extract_incomplete_methods(skeleton: str) -> List[str]:
     return targets
 
 
-def _stable_hash_int(text: str) -> int:
-    h = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    return int(h[:16], 16)
-
-
 def get_method_partition_for_example(
     mode: str,
     methods: Sequence[str],
@@ -154,21 +148,12 @@ def get_method_partition_for_example(
     seed: int,
     task_id: str | None = None,
 ) -> Dict[str, int]:
-    """Deterministically assign each method to an agent index [0..num_agents-1].
+    """Provide a simple deterministic partition for legacy consumers.
 
     - ONE: all methods -> agent 0
-    - RAND_PARTITION: random partition using stable RNG seeded by (seed, task_id)
+    - TAKE_JOB: agents self-select; return empty mapping
     """
     mode = (mode or "ONE").upper()
-    if num_agents <= 1 or mode == "ONE":
-        return {m: 0 for m in methods}
-
-    # Stable seed per example
-    base = int(seed)
-    off = _stable_hash_int(str(task_id or ""))
-    rnd = random.Random(base ^ off)
-
-    assignment: Dict[str, int] = {}
-    for m in methods:
-        assignment[m] = rnd.randrange(num_agents)
-    return assignment
+    if mode == "TAKE_JOB":
+        return {}
+    return {m: 0 for m in methods}

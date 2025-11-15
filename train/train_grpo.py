@@ -1,9 +1,9 @@
 """
 GRPO/MAG(R)PO training entrypoint for ClassEval module completion with collaboration.
 
-Supports two collaboration modes:
+Supports collaboration modes:
 - ONE:     All methods in a class assigned to a single agent.
-- RAND_PARTITION: Randomly partition methods across N agents (configurable).
+- TAKE_JOB: agents self-select which methods to implement from the shared class context.
 
 This script uses CoMLRL's MAGRPOTrainer to handle sampling and PPO-style updates.
 
@@ -11,8 +11,8 @@ Config file: LLM_Collab_Code_Completion/configs/config.yaml
 Key parameters:
 - dataset.name:   HF dataset name (e.g., FudanSELab/ClassEval)
 - data.split_ratio: train/eval split ratio (0..1)
-- collab.mode:    ONE | RAND_PARTITION
-- collab.num_agents: number of agents (for RAND_PARTITION)
+- collab.mode:    ONE | TAKE_JOB
+- collab.num_agents: number of agents when using TAKE_JOB
 - seed:           RNG seed for splits and method partition
 - trainer.*:      MAGRPO trainer args (epochs, lr, sampling settings, etc.)
 - model.*:        Base model and tokenizer settings
