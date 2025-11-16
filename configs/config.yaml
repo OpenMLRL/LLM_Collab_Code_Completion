@@ -15,7 +15,7 @@ collab:
   num_agents: 3       # used when mode=TAKE_JOB
 
 external:
-  mode: plain_simple   # plain | plain_simple | passed | level_feedback | level_passed | group_feedback | personal_feedback | personal_detailed_feedback
+  mode: code_feedback   # plain | plain_simple | code_feedback
   original_prompt: true  # include skeleton and instructions each turn
   previous_response: true  # include previous implementations each turn
 

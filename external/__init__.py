@@ -27,13 +27,34 @@ import builtins
 # Mode implementations live alongside this file
 from . import plain
 from . import plain_simple
+from . import code_feedback
 from . import passed
-from . import level_feedback
-from . import level_passed
-from . import group_feedback
-from . import personal_feedback
-from . import personal_detailed_feedback
-from . import token_report
+
+# Optional modes (may be unavailable in trimmed-down builds)
+try:  # pragma: no cover - optional dependency pattern
+    from . import level_feedback
+except Exception:  # noqa: BLE001
+    level_feedback = None  # type: ignore
+try:  # pragma: no cover
+    from . import level_passed
+except Exception:  # noqa: BLE001
+    level_passed = None  # type: ignore
+try:  # pragma: no cover
+    from . import group_feedback
+except Exception:  # noqa: BLE001
+    group_feedback = None  # type: ignore
+try:  # pragma: no cover
+    from . import personal_feedback
+except Exception:  # noqa: BLE001
+    personal_feedback = None  # type: ignore
+try:  # pragma: no cover
+    from . import personal_detailed_feedback
+except Exception:  # noqa: BLE001
+    personal_detailed_feedback = None  # type: ignore
+try:  # pragma: no cover
+    from . import token_report
+except Exception:  # noqa: BLE001
+    token_report = None  # type: ignore
 
 # Verbose toggle for external previews
 VERBOSE = True
@@ -172,6 +193,28 @@ def get_external_transition(
         print("=" * 60 + "\n")
         return prompts
 
+    if mode_key == "code_feedback":
+        prompts = code_feedback.format_followup_prompts(
+            skeleton=skeleton,
+            class_name=class_name,
+            method_names=method_names,
+            assignments=assignments,
+            agent_completions=list(agent_completions),
+            test_code=test_code,
+            original_prompt_flag=original_prompt_flag,
+            previous_response_flag=previous_response_flag,
+            num_agents=n,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
+        )
+        print("\n" + "=" * 60)
+        print("EXTERNAL MODE PREVIEW: code_feedback")
+        for i, p in enumerate(prompts):
+            print("-" * 60)
+            print(f"AGENT {i} PROMPT:\n{p}")
+        print("=" * 60 + "\n")
+        return prompts
+
     if mode_key == "passed":
         prompts = passed.format_followup_prompts(
             skeleton=skeleton,
@@ -195,6 +238,8 @@ def get_external_transition(
         return prompts
 
     if mode_key == "level_feedback":
+        if level_feedback is None:
+            raise RuntimeError("Mode 'level_feedback' is unavailable in this build.")
         prompts = level_feedback.format_followup_prompts(
             skeleton=skeleton,
             class_name=class_name,
@@ -217,6 +262,8 @@ def get_external_transition(
         return prompts
 
     if mode_key == "level_passed":
+        if level_passed is None:
+            raise RuntimeError("Mode 'level_passed' is unavailable in this build.")
         prompts = level_passed.format_followup_prompts(
             skeleton=skeleton,
             class_name=class_name,
@@ -239,6 +286,8 @@ def get_external_transition(
         return prompts
 
     if mode_key == "group_feedback":
+        if group_feedback is None:
+            raise RuntimeError("Mode 'group_feedback' is unavailable in this build.")
         prompts = group_feedback.format_followup_prompts(
             skeleton=skeleton,
             class_name=class_name,
@@ -261,6 +310,8 @@ def get_external_transition(
         return prompts
 
     if mode_key == "personal_feedback":
+        if personal_feedback is None:
+            raise RuntimeError("Mode 'personal_feedback' is unavailable in this build.")
         prompts = personal_feedback.format_followup_prompts(
             skeleton=skeleton,
             class_name=class_name,
@@ -283,6 +334,8 @@ def get_external_transition(
         return prompts
 
     if mode_key == "personal_detailed_feedback":
+        if personal_detailed_feedback is None:
+            raise RuntimeError("Mode 'personal_detailed_feedback' is unavailable in this build.")
         prompts = personal_detailed_feedback.format_followup_prompts(
             skeleton=skeleton,
             class_name=class_name,
@@ -305,6 +358,8 @@ def get_external_transition(
         return prompts
 
     if mode_key == "token_report":
+        if token_report is None:
+            raise RuntimeError("Mode 'token_report' is unavailable in this build.")
         prompts = token_report.format_followup_prompts(
             skeleton=skeleton,
             class_name=class_name,
