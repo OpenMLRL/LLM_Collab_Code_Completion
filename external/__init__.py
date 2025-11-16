@@ -26,6 +26,7 @@ import builtins
 
 # Mode implementations live alongside this file
 from . import plain
+from . import plain_simple
 from . import passed
 from . import level_feedback
 from . import level_passed
@@ -144,6 +145,27 @@ def get_external_transition(
         )
         print("\n" + "=" * 60)
         print("EXTERNAL MODE PREVIEW: plain")
+        for i, p in enumerate(prompts):
+            print("-" * 60)
+            print(f"AGENT {i} PROMPT:\n{p}")
+        print("=" * 60 + "\n")
+        return prompts
+
+    if mode_key == "plain_simple":
+        prompts = plain_simple.format_followup_prompts(
+            skeleton=skeleton,
+            class_name=class_name,
+            method_names=method_names,
+            assignments=assignments,
+            agent_completions=list(agent_completions),
+            original_prompt_flag=original_prompt_flag,
+            previous_response_flag=previous_response_flag,
+            num_agents=n,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
+        )
+        print("\n" + "=" * 60)
+        print("EXTERNAL MODE PREVIEW: plain_simple")
         for i, p in enumerate(prompts):
             print("-" * 60)
             print(f"AGENT {i} PROMPT:\n{p}")
