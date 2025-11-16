@@ -666,7 +666,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                         cover=lv1,
                         overlap=lv2,
                         balance=lv3,
-                        components=0.0,
+                        components=None,
                         total=total,
                         step=None,
                         commit=False,
