@@ -84,7 +84,7 @@ def build_take_job_prompt(
 
         As a final reminder, please select a **non-empty, proper subset** of {v_braced} to implement.
 
-        We recommend choosing either the first few methods from the function set {v_braced} or a consecutive sequence of methods from the end.
+        We recommend choosing a consecutive block of methods that either starts at the beginning of {v_braced} or ends at its last method (DO NOT limit yourself to only the beginning).
 
         Take particular care not to select all methods for implementation!
         """
