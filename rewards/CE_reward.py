@@ -447,9 +447,12 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             INF = 1
             _count_total += 1
 
+            V_set: Set[str] = set(method_names)
+            V = len(V_set)
+
             # Early penalty: penalize by number of agents with zero functions (k * -INF) and skip
             try:
-                zeros = sum(1 for s in A_sets if (len(s) if s is not None else 0) == 0)
+                zeros = sum(1 for s in A_sets if (len(s) if s is not None else 0) in (0, V))
                 if zeros > 0:
                     rewards.append(-INF * 0.5 * zeros)
                     continue
@@ -460,8 +463,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             _count_pass_lv0 += 1
 
             # New reward rules (lv1 + lv2)
-            V_set: Set[str] = set(method_names)
-            V = len(V_set)
+            
             if V <= 0:
                 rewards.append(-INF)
                 continue
@@ -481,7 +483,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             # lv2: constrain total picks S = sum_i |A_i|
             S_total = sum(len(s) for s in A_sets)
             # Early termination if total picks exceed 2V
-            if S_total > 2 * V + 2:
+            if S_total >= 2 * V:
                 rewards.append(-INF)
                 continue
 

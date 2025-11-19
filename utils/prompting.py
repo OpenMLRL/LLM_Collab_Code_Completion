@@ -81,6 +81,12 @@ def build_take_job_prompt(
         SKELETON START
         {skeleton.strip()}
         SKELETON END
+
+        As a final reminder, please select a **non-empty, proper subset** of {v_braced} to implement.
+
+        We recommend choosing either the first few methods from the function set {v_braced} or a consecutive sequence of methods from the end.
+
+        Take particular care not to select all methods for implementation!
         """
     ).strip()
 
