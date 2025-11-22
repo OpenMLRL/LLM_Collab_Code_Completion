@@ -2,6 +2,8 @@
 
 This repo provides the extended environments for [**CoMLRL**](https://github.com/OpenMLRL/CoMLRL).
 
+<img src="./demo_cc.gif" alt="Code generation demo" width="600px">
+
 ## Installation
 
 Install [**CoMLRL**](https://github.com/OpenMLRL/CoMLRL):
