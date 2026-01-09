@@ -27,6 +27,10 @@ conda install -c conda-forge comlrl
 - **Splitting**: `train/train_grpo.py` performs a stable random train/eval split
   (default 80/20) on top of the Hugging Face dataset; seeds are optionally randomized via
   `fixed_seed=false`.
+- **Subsetting**: use `data.train_split` for an HF split string (e.g.,
+  `train[:50]` or `validation[:100]`); the resulting subset is still re-split by
+  `split_ratio`. If a split name is missing (e.g., ClassEval only has `test`),
+  the loader falls back to the first available split before slicing.
 - **Prompting**: prompts include the sanitized class skeleton, explicit method names per
   agent, and any collaboration instructions.
 - **Testing**: reward code merges agent completions back into the skeleton and runs the
@@ -38,8 +42,8 @@ Key sections in `configs/config.yaml`:
 
 - `model`: base checkpoint (`Qwen/Qwen2.5-Coder-3B-Instruct` by default), tokenizer/model
   kwargs, and device mapping.
-- `data`: dataset name and split ratio; customize when experimenting with different ClassEval
-  sub-splits or local mirrors.
+- `data`: dataset name, optional `train_split` (HF split string), and split ratio; customize
+  when experimenting with different ClassEval sub-splits or local mirrors.
 - `collab`: choose `ONE` or `TAKE_JOB` and set `num_agents` (for TAKE_JOB).
 - `external`: determines the feedback mode. `token_report` summarizes syntax/tests at each
   turn; other modes replicate the options documented in the code-generation README

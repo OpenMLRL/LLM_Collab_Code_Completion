@@ -23,6 +23,7 @@ in utils/ and the reward in rewards/CE_reward.py.
 
 import argparse
 import os
+import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple, Callable
 import time
@@ -97,6 +98,71 @@ def _expand_jobid_placeholder(path: str) -> str:
         return path.replace("[jobid]", _resolve_job_id())
     return path
 
+
+def _preferred_split_key(ds_all: Any) -> Optional[str]:
+    """Pick a representative split key when loading a DatasetDict."""
+    try:
+        keys = list(ds_all.keys())  # type: ignore[attr-defined]
+    except Exception:
+        return None
+    for k in ("train", "validation", "val", "test"):
+        if k in ds_all:
+            return k
+    return keys[0] if keys else None
+
+
+def _manual_slice_dataset(ds: Any, split_expr: Optional[str]) -> Any:
+    """Apply a best-effort slice when HF split loading fails."""
+    if not split_expr or "[" not in split_expr or "]" not in split_expr:
+        return ds
+    try:
+        m = re.search(r"\[\s*(?P<start>-?\d*)\s*:\s*(?P<end>-?\d*)\s*\]", split_expr)
+        if not m:
+            return ds
+        start_raw = m.group("start")
+        end_raw = m.group("end")
+        start = int(start_raw) if start_raw not in (None, "", "+") else None
+        end = int(end_raw) if end_raw not in (None, "", "+") else None
+        n = len(ds)
+        s_idx = start if start is not None else 0
+        e_idx = end if end is not None else n
+        if s_idx < 0:
+            s_idx = max(0, n + s_idx)
+        if e_idx < 0:
+            e_idx = max(0, n + e_idx)
+        e_idx = min(max(s_idx, e_idx), n)
+        return ds.select(range(s_idx, e_idx))
+    except Exception:
+        return ds
+
+
+def _load_dataset_with_optional_split(dataset_name: str, dataset_split: Optional[str]):
+    """Load dataset with an optional split, falling back to manual slicing if needed."""
+    if dataset_split:
+        try:
+            return load_dataset(dataset_name, split=dataset_split)
+        except Exception:
+            try:
+                ds_all = load_dataset(dataset_name)
+            except Exception as e:
+                raise e
+            base_split = str(dataset_split).split("[", 1)[0].split(":", 1)[0].strip()
+            base_ds = ds_all
+            try:
+                if base_split and hasattr(ds_all, "keys") and base_split in ds_all:  # type: ignore[attr-defined]
+                    base_ds = ds_all[base_split]
+                else:
+                    preferred = _preferred_split_key(ds_all)
+                    if preferred is not None:
+                        base_ds = ds_all[preferred]
+            except Exception:
+                pass
+            sliced = _manual_slice_dataset(base_ds, dataset_split)
+            print(f"[data] Loaded {dataset_name} via fallback split={dataset_split}; using {len(sliced)} examples")
+            return sliced
+    return load_dataset(dataset_name)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train GRPO/MAGRPO for ClassEval module completion")
     parser.add_argument(
@@ -155,7 +221,11 @@ def main():
             except Exception:
                 seed = int(time.time()) & 0x7FFFFFFF
 
-    dataset_name = data_cfg.get("dataset_name", "FudanSELab/ClassEval")
+    dataset_name_raw = data_cfg.get("dataset_name", "FudanSELab/ClassEval")
+    dataset_name = str(dataset_name_raw).strip() or "FudanSELab/ClassEval"
+    dataset_split = data_cfg.get("train_split", None)
+    if isinstance(dataset_split, str):
+        dataset_split = dataset_split.strip() or None
     split_ratio = float(data_cfg.get("split_ratio", 0.8))
 
     collab_mode = str(collab_cfg.get("mode", "ONE")).upper()
@@ -165,9 +235,9 @@ def main():
 
     # Load dataset (single split then random split by ratio)
     try:
-        ds_all = load_dataset(dataset_name)
+        ds_all = _load_dataset_with_optional_split(dataset_name, dataset_split)
     except Exception as e:
-        print(f"Failed to load dataset {dataset_name}: {e}")
+        print(f"Failed to load dataset name={dataset_name} split={dataset_split}: {e}")
         return
 
     train_ds, eval_ds = dataset_train_eval_split(ds_all, split_ratio=split_ratio, seed=seed)

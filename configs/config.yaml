@@ -1,5 +1,5 @@
 model:
-  name: Qwen/Qwen2.5-Coder-3B-Instruct  # Qwen/Qwen2.5-Coder-3B-Instruct
+  name: Qwen/Qwen3-4B-Instruct-2507  # Qwen/Qwen2.5-Coder-3B-Instruct
   # Optional: pass through to HF
   tokenizer_kwargs: {}
   model_kwargs:
@@ -8,6 +8,7 @@ model:
 
 data:
   dataset_name: FudanSELab/ClassEval
+  train_split: test[:66]  # Optional HF split string (e.g., test[:50]); missing splits fall back to the first available split
   split_ratio: 0.8  # train/eval split ratio
 
 collab:
@@ -30,8 +31,8 @@ trainer:
   num_generations: 3
   # Per-agent generation cap; increase if outputs truncate.
   max_new_tokens: 600
-  temperature: 0.25
-  top_p: 0.90
+  temperature: 0.6
+  top_p: 0.60
   num_turns: 1
   # PPO-related (CoMLRL MAGRPO) options
   # Whether to normalize advantages when updating policy
