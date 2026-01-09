@@ -61,6 +61,24 @@ def _as_opt_float(x: Any, default: Optional[float]) -> Optional[float]:
     return default
 
 
+def _as_opt_int(x: Any, default: Optional[int]) -> Optional[int]:
+    if x is None:
+        return default
+    if isinstance(x, bool):
+        return default
+    if isinstance(x, (int, float)):
+        return int(x)
+    if isinstance(x, str):
+        s = x.strip().lower()
+        if s in ("none", "null", ""):
+            return None
+        try:
+            return int(float(s))
+        except Exception:
+            return default
+    return default
+
+
 def _resolve_job_id() -> str:
     jid = os.environ.get("SLURM_JOB_ID") or os.environ.get("JOB_ID")
     if jid:
@@ -101,6 +119,9 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
         "normalize_advantage": bool(tr.get("normalize_advantage", False)),
         "epsilon_clip": _as_opt_float(tr.get("epsilon_clip", None), None),
     }
+    rb_size = _as_opt_int(tr.get("rollout_buffer_size", None), None)
+    if rb_size is not None:
+        candidate["rollout_buffer_size"] = rb_size
 
     try:
         params = set(inspect.signature(MAGRPOConfig.__init__).parameters.keys())

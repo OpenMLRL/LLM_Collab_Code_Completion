@@ -1,5 +1,5 @@
 model:
-  name: Qwen/Qwen3-4B-Instruct-2507  # Qwen/Qwen2.5-Coder-3B-Instruct
+  name: Qwen/Qwen2.5-Coder-3B  # Qwen/Qwen2.5-Coder-3B-Instruct
   # Optional: pass through to HF
   tokenizer_kwargs: {}
   model_kwargs:
@@ -24,16 +24,17 @@ trainer:
   output_dir: TODO  # trainer output/checkpoint directory (set via scripts/train_grpo_sbatch_ghx4.sh)
   num_train_epochs: 3
   per_device_train_batch_size: 1
+  rollout_buffer_size: 2  # Optional: number of rollouts to buffer before an update (comlrl)
   # Learning rate for optimizer (alias: lr)
-  learning_rate: 1e-5
+  learning_rate: 4e-6
   logging_steps: 50
   save_steps: 200
   num_generations: 3
   # Per-agent generation cap; increase if outputs truncate.
   max_new_tokens: 600
-  temperature: 0.6
-  top_p: 0.60
-  num_turns: 1
+  temperature: 0.35
+  top_p: 0.80
+  num_turns: 2
   # PPO-related (CoMLRL MAGRPO) options
   # Whether to normalize advantages when updating policy
   # normalize_advantage: true

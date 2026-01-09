@@ -50,8 +50,9 @@ Key sections in `configs/config.yaml`:
   (`plain`, `level_feedback`, `group_feedback`, `personal_feedback`, `personal_detailed_feedback`,
   `passed`, `level_passed`).
 - `trainer`: forwarded to `comlrl.trainers.magrpo.MAGRPOTrainer`. Includes sampling settings
-  (`num_generations`, `num_turns`, temperature/top_p), optimization hyperparameters, and IO
-  controls (`output_dir`, `logging_steps`, etc.).
+  (`num_generations`, `num_turns`, temperature/top_p), rollout buffering
+  (`rollout_buffer_size`), optimization hyperparameters, and IO controls
+  (`output_dir`, `logging_steps`, etc.).
 - `reward_processor`: optional extra scaling/shift before the reward hits the trainer.
 - `output`: persistence knobs (save final model, keep tmp dirs); environment variables such
   as `CLASSEVAL_TMP_BASE` are derived from this section to colocate temp files per job.
