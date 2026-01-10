@@ -6,7 +6,8 @@ Reward pipeline for ClassEval collaborative completion.
   recording per-test outcomes.
 - `get_reward_function` parses each agent’s code, builds per-method selections, and applies
   the simplified ClassEval shaping:
-    * `lv1`: syntax bonus (2 points); if syntax fails the total reward is set to 0.
+    * `lv1`: syntax score proportional to syntactically valid method outputs (range [0, 2]).
+      If the combined program fails syntax, the total reward is set to 0.
     * `lv2`: test bonus proportional to the pass rate (passed/total), scaled to [0, 4].
     * `lv3`: overlap penalty normalized by total methods (range [-1, 0]).
 - Optional logging hooks export the individual levels for eval batches.
@@ -438,6 +439,12 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             except Exception:
                 method_to_code = {}
 
+            valid_method_count = len(method_to_code)
+            if total_methods > 0:
+                lv1 = 2.0 * (float(valid_method_count) / float(total_methods))
+            else:
+                lv1 = 0.0
+
             combined_code = merge_methods_into_skeleton(
                 skeleton=skeleton,
                 class_name=class_name,
@@ -446,7 +453,6 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             run_res = run_unittests_with_details(combined_code, test_code)
             syntax_ok = bool(run_res.get("syntax_ok", False))
-            lv1 = 2.0 if syntax_ok else 0.0
 
             # ensure syntax_ok...
             if not syntax_ok:

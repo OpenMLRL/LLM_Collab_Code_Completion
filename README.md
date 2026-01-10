@@ -53,7 +53,7 @@ Key sections in `configs/magrpo_classeval_config.yaml`:
 ## Rewards, Logging, and Evaluation
 
 - `rewards/CE_reward.py` computes structured rewards:
-  - `lv1`: syntax bonus (syntax failure yields 0 total reward).
+  - `lv1`: syntax score proportional to valid method outputs (range [0, 2]).
   - `lv2`: unit-test bonus based on pass rate (passed/total), scaled to [0, 4].
   - `lv3`: overlap penalty normalized by total methods (range [-1, 0]).
   - reward shift: optional post-processing shift via `reward_processor.shift`.
