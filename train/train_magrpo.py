@@ -34,6 +34,7 @@ from LLM_Collab_Code_Completion.utils.data import (
 from LLM_Collab_Code_Completion.rewards.CE_reward import (
     get_reward_function,
 )
+from comlrl.utils.reward_processor import RewardProcessors  # type: ignore
 from LLM_Collab_Code_Completion.train.strategies import (
     get_strategy,
     build_agent_formatters,
@@ -96,21 +97,6 @@ def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
         current[keys[-1]] = value
 
     return result
-
-
-def _resolve_job_id() -> str:
-    jid = os.environ.get("SLURM_JOB_ID") or os.environ.get("JOB_ID")
-    if jid:
-        return str(jid)
-    return time.strftime("nojid-%Y%m%d-%H%M%S")
-
-
-def _expand_jobid_placeholder(path: str) -> str:
-    if not isinstance(path, str) or not path:
-        return path
-    if "[jobid]" in path:
-        return path.replace("[jobid]", _resolve_job_id())
-    return path
 
 
 def _preferred_split_key(ds_all: Any) -> Optional[str]:
@@ -258,7 +244,7 @@ def main():
     output_dir_cfg = magrpo_cfg.get("output_dir") or output_cfg.get(
         "base_dir", os.path.join(os.getcwd(), "output")
     )
-    output_dir = _expand_jobid_placeholder(str(output_dir_cfg))
+    output_dir = str(output_dir_cfg)
     magrpo_cfg["output_dir"] = output_dir
     try:
         os.makedirs(output_dir, exist_ok=True)
@@ -270,19 +256,8 @@ def main():
         tmp_base = output_cfg.get("tmp_base_dir")
     except Exception:
         tmp_base = None
-    if not tmp_base:
-        tmp_base = os.path.join(output_dir, "tmp")
     if tmp_base:
-        os.environ["CLASSEVAL_TMP_BASE"] = _expand_jobid_placeholder(str(tmp_base))
-    keep_tmp_val = None
-    try:
-        keep_tmp_val = output_cfg.get("keep_tmp", None)
-    except Exception:
-        keep_tmp_val = None
-    if keep_tmp_val is not None:
-        keep_flag = str(keep_tmp_val).strip().lower() in ("1", "true", "yes", "on")
-        os.environ["CLASSEVAL_KEEP_TMP"] = "1" if keep_flag else "0"
-
+        os.environ["CLASSEVAL_TMP_BASE"] = str(tmp_base)
     model_name = model_cfg.get("name", "Qwen/Qwen2.5-3B")
     tokenizer_kwargs = model_cfg.get("tokenizer_kwargs", {})
     model_kwargs = model_cfg.get("model_kwargs", {})
@@ -353,10 +328,7 @@ def main():
     if isinstance(wandb_cfg, dict) and wandb_cfg.get("enabled", True):
         dir_val = wandb_cfg.get("dir") or output_dir
         if dir_val:
-            try:
-                dir_val = _expand_jobid_placeholder(str(dir_val))
-            except Exception:
-                dir_val = str(dir_val)
+            dir_val = str(dir_val)
         try:
             num_turns_val = int(getattr(magrpo_args, "num_turns", 1))
         except Exception:
@@ -379,6 +351,22 @@ def main():
         if wandb_config.get("dir"):
             os.environ.setdefault("WANDB_DIR", str(wandb_config["dir"]))
 
+    reward_processor = None
+    reward_proc_cfg = cfg.get("reward_processor", {}) or {}
+    if reward_proc_cfg.get("enabled", True):
+        scale_factor = reward_proc_cfg.get("scale_factor", 1.0)
+        reward_processor = RewardProcessors.scale(factor=scale_factor)
+        shift_val = reward_proc_cfg.get("shift", None)
+        if shift_val is not None:
+            try:
+                shift_val_f = float(shift_val)
+            except Exception:
+                shift_val_f = None
+            if shift_val_f is not None:
+                shift_proc = RewardProcessors.shift(value=shift_val_f)
+                prev = reward_processor
+                reward_processor = (lambda p=prev, s=shift_proc: (lambda x: s(p(x))))()
+
     trainer_kwargs = {
         "agents": agents,
         "num_agents": num_agents,
@@ -391,6 +379,8 @@ def main():
         "wandb_config": wandb_config,
         "dataset_type": dataset_type,
     }
+    if reward_processor is not None:
+        trainer_kwargs["reward_processor"] = reward_processor
     apply_default_patches(cfg)
 
     is_multi_turn = False
@@ -467,7 +457,7 @@ def main():
 
         external_set_context_resolver(_resolver)
 
-        external_mode = str(external_cfg.get("mode", "level_feedback"))
+        external_mode = str(external_cfg.get("mode", "code_feedback"))
 
         def external_transition_wrapper(
             prompt,
@@ -478,16 +468,12 @@ def main():
             _default_num_agents=num_agents,
             **_kwargs,
         ):
-            original_prompt_flag = external_cfg.get("original_prompt", True)
-            previous_response_flag = external_cfg.get("previous_response", True)
             num_agents_val = num_agents if num_agents is not None else _default_num_agents
             return external_get_transition(
                 prompt=prompt,
                 agent_completions=agent_completions,
                 num_agents=num_agents_val,
                 mode=external_mode,
-                original_prompt=original_prompt_flag,
-                previous_response=previous_response_flag,
                 prompt_history_per_agent=prompt_history_per_agent,
                 response_history_per_agent=response_history_per_agent,
             )
@@ -501,10 +487,7 @@ def main():
     if bool(out_cfg.get("save_final_model", False)):
         save_path_cfg = out_cfg.get("save_path")
         if save_path_cfg:
-            try:
-                save_path = _expand_jobid_placeholder(str(save_path_cfg))
-            except Exception:
-                save_path = str(save_path_cfg)
+            save_path = str(save_path_cfg)
         else:
             save_path = os.path.join(os.path.abspath(magrpo_args.output_dir), "final_model")
 

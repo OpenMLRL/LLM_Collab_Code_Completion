@@ -6,8 +6,8 @@ Reward pipeline for ClassEval collaborative completion.
   recording per-test outcomes.
 - `get_reward_function` parses each agent’s code, builds per-method selections, and applies
   the simplified ClassEval shaping:
-    * `lv1`: syntax bonus (2 points); if syntax fails the total reward is forced to zero.
-    * `lv2`: test bonus proportional to the pass rate (passed/total).
+    * `lv1`: syntax bonus (2 points); if syntax fails the total reward is set to 0.
+    * `lv2`: test bonus proportional to the pass rate (passed/total), scaled to [0, 4].
     * `lv3`: overlap penalty normalized by total methods (range [-1, 0]).
 - Optional logging hooks export the individual levels for eval batches.
 """
@@ -126,16 +126,9 @@ if __name__ == "__main__":
 
     # Run tests in an isolated temporary working directory so that any
     # file system side effects from user code or tests do not pollute the repo root.
-    # If a job id is available (e.g., SLURM_JOB_ID), group temp dirs under it to
-    # avoid collisions across concurrent processes while keeping per-call isolation.
+    # If a job id is available, group temp dirs under it to avoid collisions
+    # across concurrent processes while keeping per-call isolation.
     base_tmp = os.environ.get("CLASSEVAL_TMP_BASE", tempfile.gettempdir())
-    job_id = os.environ.get("SLURM_JOB_ID") or os.environ.get("JOB_ID")
-    # Support placeholder in base path: ".../[jobid]/tmp"
-    if isinstance(base_tmp, str) and job_id and "[jobid]" in base_tmp:
-        try:
-            base_tmp = base_tmp.replace("[jobid]", str(job_id))
-        except Exception:
-            pass
     tmp_parent = base_tmp
     try:
         tmp_parent = os.path.abspath(tmp_parent)
@@ -378,6 +371,7 @@ def _compute_call_graph_components(source_code: str, class_name: str, methods: S
 # count rate of samples processed (debug only)
 _count_total = 0
 
+
 def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]:
     """Return a reward function
     """
@@ -462,12 +456,12 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             # ensure syntax_ok...
             if not syntax_ok:
-                rewards.append(0)
+                rewards.append(0.0)
                 continue
 
             tests_run = int(run_res.get("testsRun") or 0)
             passed_cnt = int(run_res.get("passed") or 0)
-            lv2 = (float(passed_cnt) / float(tests_run)) if tests_run > 0 else 0.0
+            lv2 = (4.0 * float(passed_cnt) / float(tests_run)) if tests_run > 0 else 0.0
 
             total = float(lv1 + lv2 + lv3)
 

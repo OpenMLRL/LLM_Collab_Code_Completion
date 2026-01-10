@@ -42,23 +42,21 @@ Key sections in `configs/magrpo_classeval_config.yaml`:
   kwargs, and device mapping.
 - `dataset`: dataset name and split strings (`train_split`, `eval_split`) for
   ClassEval sub-slices or local mirrors.
-- `external`: determines the feedback mode. `token_report` summarizes syntax/tests at each
-  turn; other modes replicate the options documented in the code-generation README
-  (`plain`, `level_feedback`, `group_feedback`, `personal_feedback`, `personal_detailed_feedback`,
-  `passed`, `level_passed`).
+- `external`: feedback configuration (use `code_feedback` for syntax/test diagnostics).
 - `magrpo`: forwarded to `comlrl.trainers.magrpo.MAGRPOTrainer`. Includes collaboration
   (`num_agents`, param-count assignment), sampling settings (`num_generations`, `num_turns`,
   temperature/top_p), rollout buffering (`rollout_buffer_size`), optimization
   hyperparameters, and IO controls.
-- `output`: persistence knobs (save final model, keep tmp dirs); environment variables such
-  as `CLASSEVAL_TMP_BASE` are derived from this section to colocate temp files per job.
+- `reward_processor`: optional post-processing for rewards (scale, shift).
+- `output`: persistence knobs (save final model, output paths).
 
 ## Rewards, Logging, and Evaluation
 
 - `rewards/CE_reward.py` computes structured rewards:
-  - `lv1`: syntax bonus.
-  - `lv2`: unit-test bonus based on pass rate (passed/total).
+  - `lv1`: syntax bonus (syntax failure yields 0 total reward).
+  - `lv2`: unit-test bonus based on pass rate (passed/total), scaled to [0, 4].
   - `lv3`: overlap penalty normalized by total methods (range [-1, 0]).
+  - reward shift: optional post-processing shift via `reward_processor.shift`.
 - Tests execute inside per-sample temporary directories to avoid polluted state and are
   automatically truncated on timeout.
 - Loggers are inherited from CoMLRL. Enable Weights & Biases by filling `wandb.entity`

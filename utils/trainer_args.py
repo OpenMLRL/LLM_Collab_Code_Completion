@@ -79,28 +79,12 @@ def _as_opt_int(x: Any, default: Optional[int]) -> Optional[int]:
     return default
 
 
-def _resolve_job_id() -> str:
-    jid = os.environ.get("SLURM_JOB_ID") or os.environ.get("JOB_ID")
-    if jid:
-        return str(jid)
-    import time as _t
-    return _t.strftime("nojid-%Y%m%d-%H%M%S")
-
-
-def _expand_jobid_placeholder(path: str) -> str:
-    if not isinstance(path, str) or not path:
-        return path
-    if "[jobid]" in path:
-        return path.replace("[jobid]", _resolve_job_id())
-    return path
-
-
 def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
     tr = cfg.get("magrpo", {})
     output_cfg = cfg.get("output", {})
 
     output_dir_cfg = tr.get("output_dir", output_cfg.get("base_dir", os.path.join(os.getcwd(), "output")))
-    output_dir_resolved = _expand_jobid_placeholder(str(output_dir_cfg))
+    output_dir_resolved = str(output_dir_cfg)
 
     lr_val = tr.get("learning_rate", tr.get("lr", 3e-5))
 
