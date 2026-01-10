@@ -48,7 +48,7 @@ Key sections in `configs/magrpo_classeval_config.yaml`:
   temperature/top_p), rollout buffering (`rollout_buffer_size`), optimization
   hyperparameters, and IO controls.
 - `reward_processor`: optional post-processing for rewards (scale, shift).
-- `output`: persistence knobs (save final model, output paths).
+- `output`: persistence knobs (save final model, output paths, verbose debug prints).
 
 ## Rewards, Logging, and Evaluation
 

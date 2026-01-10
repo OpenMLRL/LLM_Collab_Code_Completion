@@ -23,6 +23,8 @@ import io
 import tokenize
 import os
 
+VERBOSE = True
+
 
 
 def _combine_code(impl_code: str, test_code: str) -> str:
@@ -368,17 +370,11 @@ def _compute_call_graph_components(source_code: str, class_name: str, methods: S
             comps.append(comp)
     return comps
 
-# count rate of samples processed (debug only)
-_count_total = 0
-
-
 def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]:
     """Return a reward function
     """
 
     def reward_wrapper(*agent_completions, batch_items=None, prompts=None):
-        # Use module-level counter for debug tracking
-        global _count_total
         if not agent_completions:
             return []
         batch_size = len(agent_completions[0])
@@ -410,8 +406,6 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 agent_texts.append(comp_text)
                 parsed_all = extract_method_snippets(comp_text or "", allowed_methods=set(method_names))
                 A_sets.append(set(parsed_all.keys()))
-
-            _count_total += 1
 
             # lv3: overlap penalty normalized by total methods
             lv3 = 0.0
@@ -465,9 +459,9 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             total = float(lv1 + lv2 + lv3)
 
-            print('=' * 50)
-            print(lv1, lv2, lv3)
-            # print(_count_pass_syntax / _count_total)
+            if VERBOSE:
+                print("=" * 50)
+                print(lv1, lv2, lv3)
 
             # Optional eval logging (reuse field names for compatibility)
             try:
@@ -494,24 +488,24 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 except Exception:
                     pass
 
-            # Preview generations: print each agent's code and number of functions parsed
-            try:
-                preview_limit = 5000
-                task_id = example.get("task_id")
-                header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
-                print(header, flush=True)
-                print(f"total funcs: {total_methods}")
-                for aidx, text in enumerate(agent_texts):
-                    funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
-                    snippet = (text or "")[:preview_limit]
-                    if text and len(text) > preview_limit:
-                        snippet += "..."
-                    print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
-                    print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
-            except Exception:
-                pass
-
-            print('=' * 50)
+            if VERBOSE:
+                # Preview generations: print each agent's code and number of functions parsed
+                try:
+                    preview_limit = 5000
+                    task_id = example.get("task_id")
+                    header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
+                    print(header, flush=True)
+                    print(f"total funcs: {total_methods}")
+                    for aidx, text in enumerate(agent_texts):
+                        funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
+                        snippet = (text or "")[:preview_limit]
+                        if text and len(text) > preview_limit:
+                            snippet += "..."
+                        print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
+                        print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
+                except Exception:
+                    pass
+                print("=" * 50)
 
             rewards.append(total)
 

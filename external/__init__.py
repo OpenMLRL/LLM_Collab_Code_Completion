@@ -25,36 +25,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import builtins
 
 # Mode implementations live alongside this file
-from . import plain
-from . import plain_simple
 from . import code_feedback
-from . import passed
-
-# Optional modes (may be unavailable in trimmed-down builds)
-try:  # pragma: no cover - optional dependency pattern
-    from . import level_feedback
-except Exception:  # noqa: BLE001
-    level_feedback = None  # type: ignore
-try:  # pragma: no cover
-    from . import level_passed
-except Exception:  # noqa: BLE001
-    level_passed = None  # type: ignore
-try:  # pragma: no cover
-    from . import group_feedback
-except Exception:  # noqa: BLE001
-    group_feedback = None  # type: ignore
-try:  # pragma: no cover
-    from . import personal_feedback
-except Exception:  # noqa: BLE001
-    personal_feedback = None  # type: ignore
-try:  # pragma: no cover
-    from . import personal_detailed_feedback
-except Exception:  # noqa: BLE001
-    personal_detailed_feedback = None  # type: ignore
-try:  # pragma: no cover
-    from . import token_report
-except Exception:  # noqa: BLE001
-    token_report = None  # type: ignore
 
 # Verbose toggle for external previews
 VERBOSE = True
@@ -94,7 +65,7 @@ def get_external_transition(
     prompt: str,
     agent_completions: Union[List[str], Tuple[str, ...]],
     num_agents: int = 2,
-    mode: str = "plain",
+    mode: str = "code_feedback",
     *,
     # Per-agent history provided by CoMLRL (full history by default)
     prompt_history_per_agent: Optional[List[List[str]]] = None,
@@ -107,10 +78,7 @@ def get_external_transition(
         prompt: The original per‑agent prompt string (used to resolve context).
         agent_completions: Best completions from previous turn, one per agent.
         num_agents: Number of collaborating agents.
-        mode: One of 'plain' | 'passed' | 'level_feedback' | 'level_passed'.
-        **kwargs: Mode flags:
-            - original_prompt: bool (include base context block)
-            - previous_response: bool (include previous code snippets)
+        mode: Only 'code_feedback' is supported in this build.
 
     Returns:
         A list (or tuple) of strings, one per agent.
@@ -138,257 +106,33 @@ def get_external_transition(
     test_code = ctx.get("tests_sandbox") or ctx.get("tests_eval", "")
     assignments = ctx.get("assignments", {}) or {}
 
-    # Common flags
-    original_prompt_flag = kwargs.get("original_prompt", True)
-    previous_response_flag = kwargs.get("previous_response", True)
-
     # Normalize histories (full history: all previous prompts/responses per agent)
     if prompt_history_per_agent is None:
         prompt_history_per_agent = [[] for _ in range(n)]
     if response_history_per_agent is None:
         response_history_per_agent = [[] for _ in range(n)]
 
-    # Route to mode implementation
     mode_key = (mode or "").lower()
-
-    if mode_key == "plain":
-        prompts = plain.format_followup_prompts(
-            skeleton=skeleton,
-            class_name=class_name,
-            method_names=method_names,
-            assignments=assignments,
-            agent_completions=list(agent_completions),
-            original_prompt_flag=original_prompt_flag,
-            previous_response_flag=previous_response_flag,
-            num_agents=n,
-            prompt_history_per_agent=prompt_history_per_agent,
-            response_history_per_agent=response_history_per_agent,
+    if mode_key and mode_key != "code_feedback":
+        raise NotImplementedError(
+            f"External transition mode '{mode}' is not supported. Use 'code_feedback'."
         )
-        print("\n" + "=" * 60)
-        print("EXTERNAL MODE PREVIEW: plain")
-        for i, p in enumerate(prompts):
-            print("-" * 60)
-            print(f"AGENT {i} PROMPT:\n{p}")
-        print("=" * 60 + "\n")
-        return prompts
 
-    if mode_key == "plain_simple":
-        prompts = plain_simple.format_followup_prompts(
-            skeleton=skeleton,
-            class_name=class_name,
-            method_names=method_names,
-            assignments=assignments,
-            agent_completions=list(agent_completions),
-            original_prompt_flag=original_prompt_flag,
-            previous_response_flag=previous_response_flag,
-            num_agents=n,
-            prompt_history_per_agent=prompt_history_per_agent,
-            response_history_per_agent=response_history_per_agent,
-        )
-        print("\n" + "=" * 60)
-        print("EXTERNAL MODE PREVIEW: plain_simple")
-        for i, p in enumerate(prompts):
-            print("-" * 60)
-            print(f"AGENT {i} PROMPT:\n{p}")
-        print("=" * 60 + "\n")
-        return prompts
-
-    if mode_key == "code_feedback":
-        prompts = code_feedback.format_followup_prompts(
-            skeleton=skeleton,
-            class_name=class_name,
-            method_names=method_names,
-            assignments=assignments,
-            agent_completions=list(agent_completions),
-            test_code=test_code,
-            num_agents=n,
-            prompt_history_per_agent=prompt_history_per_agent,
-            response_history_per_agent=response_history_per_agent,
-        )
-        print("\n" + "=" * 60)
-        print("EXTERNAL MODE PREVIEW: code_feedback")
-        for i, p in enumerate(prompts):
-            print("-" * 60)
-            print(f"AGENT {i} PROMPT:\n{p}")
-        print("=" * 60 + "\n")
-        return prompts
-
-    if mode_key == "passed":
-        prompts = passed.format_followup_prompts(
-            skeleton=skeleton,
-            class_name=class_name,
-            method_names=method_names,
-            assignments=assignments,
-            agent_completions=list(agent_completions),
-            test_code=test_code,
-            original_prompt_flag=original_prompt_flag,
-            previous_response_flag=previous_response_flag,
-            num_agents=n,
-            prompt_history_per_agent=prompt_history_per_agent,
-            response_history_per_agent=response_history_per_agent,
-        )
-        print("\n" + "=" * 60)
-        print("EXTERNAL MODE PREVIEW: passed")
-        for i, p in enumerate(prompts):
-            print("-" * 60)
-            print(f"AGENT {i} PROMPT:\n{p}")
-        print("=" * 60 + "\n")
-        return prompts
-
-    if mode_key == "level_feedback":
-        if level_feedback is None:
-            raise RuntimeError("Mode 'level_feedback' is unavailable in this build.")
-        prompts = level_feedback.format_followup_prompts(
-            skeleton=skeleton,
-            class_name=class_name,
-            method_names=method_names,
-            assignments=assignments,
-            agent_completions=list(agent_completions),
-            test_code=test_code,
-            original_prompt_flag=original_prompt_flag,
-            previous_response_flag=previous_response_flag,
-            num_agents=n,
-            prompt_history_per_agent=prompt_history_per_agent,
-            response_history_per_agent=response_history_per_agent,
-        )
-        print("\n" + "=" * 60)
-        print("EXTERNAL MODE PREVIEW: level_feedback")
-        for i, p in enumerate(prompts):
-            print("-" * 60)
-            print(f"AGENT {i} PROMPT:\n{p}")
-        print("=" * 60 + "\n")
-        return prompts
-
-    if mode_key == "level_passed":
-        if level_passed is None:
-            raise RuntimeError("Mode 'level_passed' is unavailable in this build.")
-        prompts = level_passed.format_followup_prompts(
-            skeleton=skeleton,
-            class_name=class_name,
-            method_names=method_names,
-            assignments=assignments,
-            agent_completions=list(agent_completions),
-            test_code=test_code,
-            original_prompt_flag=original_prompt_flag,
-            previous_response_flag=previous_response_flag,
-            num_agents=n,
-            prompt_history_per_agent=prompt_history_per_agent,
-            response_history_per_agent=response_history_per_agent,
-        )
-        print("\n" + "=" * 60)
-        print("EXTERNAL MODE PREVIEW: level_passed")
-        for i, p in enumerate(prompts):
-            print("-" * 60)
-            print(f"AGENT {i} PROMPT:\n{p}")
-        print("=" * 60 + "\n")
-        return prompts
-
-    if mode_key == "group_feedback":
-        if group_feedback is None:
-            raise RuntimeError("Mode 'group_feedback' is unavailable in this build.")
-        prompts = group_feedback.format_followup_prompts(
-            skeleton=skeleton,
-            class_name=class_name,
-            method_names=method_names,
-            assignments=assignments,
-            agent_completions=list(agent_completions),
-            test_code=test_code,
-            original_prompt_flag=original_prompt_flag,
-            previous_response_flag=previous_response_flag,
-            num_agents=n,
-            prompt_history_per_agent=prompt_history_per_agent,
-            response_history_per_agent=response_history_per_agent,
-        )
-        print("\n" + "=" * 60)
-        print("EXTERNAL MODE PREVIEW: group_feedback")
-        for i, p in enumerate(prompts):
-            print("-" * 60)
-            print(f"AGENT {i} PROMPT:\n{p}")
-        print("=" * 60 + "\n")
-        return prompts
-
-    if mode_key == "personal_feedback":
-        if personal_feedback is None:
-            raise RuntimeError("Mode 'personal_feedback' is unavailable in this build.")
-        prompts = personal_feedback.format_followup_prompts(
-            skeleton=skeleton,
-            class_name=class_name,
-            method_names=method_names,
-            assignments=assignments,
-            agent_completions=list(agent_completions),
-            test_code=test_code,
-            original_prompt_flag=original_prompt_flag,
-            previous_response_flag=previous_response_flag,
-            num_agents=n,
-            prompt_history_per_agent=prompt_history_per_agent,
-            response_history_per_agent=response_history_per_agent,
-        )
-        print("\n" + "=" * 60)
-        print("EXTERNAL MODE PREVIEW: personal_feedback")
-        for i, p in enumerate(prompts):
-            print("-" * 60)
-            print(f"AGENT {i} PROMPT:\n{p}")
-        print("=" * 60 + "\n")
-        return prompts
-
-    if mode_key == "personal_detailed_feedback":
-        if personal_detailed_feedback is None:
-            raise RuntimeError("Mode 'personal_detailed_feedback' is unavailable in this build.")
-        prompts = personal_detailed_feedback.format_followup_prompts(
-            skeleton=skeleton,
-            class_name=class_name,
-            method_names=method_names,
-            assignments=assignments,
-            agent_completions=list(agent_completions),
-            test_code=test_code,
-            original_prompt_flag=original_prompt_flag,
-            previous_response_flag=previous_response_flag,
-            num_agents=n,
-            prompt_history_per_agent=prompt_history_per_agent,
-            response_history_per_agent=response_history_per_agent,
-        )
-        print("\n" + "=" * 60)
-        print("EXTERNAL MODE PREVIEW: personal_detailed_feedback")
-        for i, p in enumerate(prompts):
-            print("-" * 60)
-            print(f"AGENT {i} PROMPT:\n{p}")
-        print("=" * 60 + "\n")
-        return prompts
-
-    if mode_key == "token_report":
-        if token_report is None:
-            raise RuntimeError("Mode 'token_report' is unavailable in this build.")
-        prompts = token_report.format_followup_prompts(
-            skeleton=skeleton,
-            class_name=class_name,
-            method_names=method_names,
-            assignments=assignments,
-            agent_completions=list(agent_completions),
-            test_code=test_code,
-            original_prompt_flag=original_prompt_flag,
-            previous_response_flag=previous_response_flag,
-            num_agents=n,
-            prompt_history_per_agent=prompt_history_per_agent,
-            response_history_per_agent=response_history_per_agent,
-        )
-        print("\n" + "=" * 60)
-        print("EXTERNAL MODE PREVIEW: token_report")
-        for i, p in enumerate(prompts):
-            print("-" * 60)
-            print(f"AGENT {i} PROMPT:\n{p}")
-        print("=" * 60 + "\n")
-        return prompts
-
-    supported = [
-        "plain",
-        "passed",
-        "level_feedback",
-        "level_passed",
-        "group_feedback",
-        "personal_feedback",
-        "personal_detailed_feedback",
-        "token_report",
-    ]
-    raise NotImplementedError(
-        f"External transition mode '{mode}' is not implemented. Supported: {', '.join(supported)}"
+    prompts = code_feedback.format_followup_prompts(
+        skeleton=skeleton,
+        class_name=class_name,
+        method_names=method_names,
+        assignments=assignments,
+        agent_completions=list(agent_completions),
+        test_code=test_code,
+        num_agents=n,
+        prompt_history_per_agent=prompt_history_per_agent,
+        response_history_per_agent=response_history_per_agent,
     )
+    print("\n" + "=" * 60)
+    print("EXTERNAL MODE PREVIEW: code_feedback")
+    for i, p in enumerate(prompts):
+        print("-" * 60)
+        print(f"AGENT {i} PROMPT:\n{p}")
+    print("=" * 60 + "\n")
+    return prompts

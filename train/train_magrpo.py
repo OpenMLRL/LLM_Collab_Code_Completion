@@ -34,12 +34,14 @@ from LLM_Collab_Code_Completion.utils.data import (
 from LLM_Collab_Code_Completion.rewards.CE_reward import (
     get_reward_function,
 )
+import LLM_Collab_Code_Completion.rewards.CE_reward as ce_reward
 from comlrl.utils.reward_processor import RewardProcessors  # type: ignore
 from LLM_Collab_Code_Completion.train.strategies import (
     get_strategy,
     build_agent_formatters,
 )
 from LLM_Collab_Code_Completion.utils.prompting import build_agent_prompt
+import LLM_Collab_Code_Completion.external as external_mod
 from LLM_Collab_Code_Completion.external import (
     set_context_resolver as external_set_context_resolver,
     get_external_transition as external_get_transition,
@@ -63,10 +65,6 @@ def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
     if not overrides:
         return {}
 
-    alias_root = {
-        "trainer": "magrpo",
-        "data": "dataset",
-    }
     result: Dict[str, Any] = {}
 
     for override in overrides:
@@ -80,8 +78,6 @@ def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
             key = "wandb.name"
 
         keys = key.split(".")
-        if keys and keys[0] in alias_root:
-            keys[0] = alias_root[keys[0]]
 
         try:
             import ast
@@ -189,6 +185,8 @@ def main():
     dataset_cfg = cfg.get("dataset", {})
     magrpo_cfg = cfg.get("magrpo", {})
     output_cfg = cfg.get("output", {})
+    external_cfg = cfg.get("external", {})
+    output_verbose = bool(output_cfg.get("verbose", False))
     if not isinstance(magrpo_cfg, dict):
         magrpo_cfg = {}
         cfg["magrpo"] = magrpo_cfg
@@ -347,9 +345,25 @@ def main():
             "name": run_name,
             "dir": dir_val,
             "tags": tags,
+            "config_sections": {
+                "dataset": dataset_cfg,
+                "model": model_cfg,
+                "output": output_cfg,
+                "external": external_cfg,
+                "trainer": magrpo_cfg,
+            },
         }
         if wandb_config.get("dir"):
             os.environ.setdefault("WANDB_DIR", str(wandb_config["dir"]))
+
+    try:
+        ce_reward.VERBOSE = output_verbose
+    except Exception:
+        pass
+    try:
+        external_mod.VERBOSE = output_verbose
+    except Exception:
+        pass
 
     reward_processor = None
     reward_proc_cfg = cfg.get("reward_processor", {}) or {}
@@ -388,8 +402,6 @@ def main():
         is_multi_turn = int(getattr(magrpo_args, "num_turns", 1)) > 1
     except Exception:
         is_multi_turn = False
-
-    external_cfg = cfg.get("external", {})
 
     if is_multi_turn:
         def _normalize_key(s: str) -> str:
