@@ -1,6 +1,5 @@
 from .strategies import (
     CollaborationStrategy,
-    OneStrategy,
     TakeJobStrategy,
     get_strategy,
     build_agent_formatters,
@@ -8,7 +7,6 @@ from .strategies import (
 
 __all__ = [
     "CollaborationStrategy",
-    "OneStrategy",
     "TakeJobStrategy",
     "get_strategy",
     "build_agent_formatters",

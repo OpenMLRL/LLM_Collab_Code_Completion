@@ -24,12 +24,9 @@ conda install -c conda-forge comlrl
 
 - **Contents**: each sample includes a class skeleton, method stubs (with docstrings
   or `pass`), and canonical hidden tests.
-- **Splitting**: `train/train_grpo.py` performs a stable random train/eval split
-  (default 80/20) on top of the Hugging Face dataset; seeds are optionally randomized via
-  `fixed_seed=false`.
-- **Subsetting**: use `data.train_split` for an HF split string (e.g.,
-  `train[:50]` or `validation[:100]`); the resulting subset is still re-split by
-  `split_ratio`. If a split name is missing (e.g., ClassEval only has `test`),
+- **Splitting**: `train/train_magrpo.py` loads explicit HF slices from
+  `dataset.train_split` and `dataset.eval_split` (e.g., `test[:50]` and `test[50:]`).
+- **Subsetting**: if a split name is missing (e.g., ClassEval only has `test`),
   the loader falls back to the first available split before slicing.
 - **Prompting**: prompts include the sanitized class skeleton, explicit method names per
   agent, and any collaboration instructions.
@@ -38,22 +35,20 @@ conda install -c conda-forge comlrl
 
 ## Settings
 
-Key sections in `configs/config.yaml`:
+Key sections in `configs/magrpo_classeval_config.yaml`:
 
 - `model`: base checkpoint (`Qwen/Qwen2.5-Coder-3B-Instruct` by default), tokenizer/model
   kwargs, and device mapping.
-- `data`: dataset name, optional `train_split` (HF split string), and split ratio; customize
-  when experimenting with different ClassEval sub-splits or local mirrors.
-- `collab`: choose `ONE` or `TAKE_JOB` and set `num_agents` (for TAKE_JOB).
+- `dataset`: dataset name and split strings (`train_split`, `eval_split`) for
+  ClassEval sub-slices or local mirrors.
 - `external`: determines the feedback mode. `token_report` summarizes syntax/tests at each
   turn; other modes replicate the options documented in the code-generation README
   (`plain`, `level_feedback`, `group_feedback`, `personal_feedback`, `personal_detailed_feedback`,
   `passed`, `level_passed`).
-- `trainer`: forwarded to `comlrl.trainers.magrpo.MAGRPOTrainer`. Includes sampling settings
-  (`num_generations`, `num_turns`, temperature/top_p), rollout buffering
-  (`rollout_buffer_size`), optimization hyperparameters, and IO controls
-  (`output_dir`, `logging_steps`, etc.).
-- `reward_processor`: optional extra scaling/shift before the reward hits the trainer.
+- `magrpo`: forwarded to `comlrl.trainers.magrpo.MAGRPOTrainer`. Includes collaboration
+  (`num_agents`, TAKE_JOB self-select), sampling settings (`num_generations`, `num_turns`,
+  temperature/top_p), rollout buffering (`rollout_buffer_size`), optimization
+  hyperparameters, and IO controls.
 - `output`: persistence knobs (save final model, keep tmp dirs); environment variables such
   as `CLASSEVAL_TMP_BASE` are derived from this section to colocate temp files per job.
 

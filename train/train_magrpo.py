@@ -1,42 +1,20 @@
-"""
-GRPO/MAG(R)PO training entrypoint for ClassEval module completion with collaboration.
-
-Supports collaboration modes:
-- ONE:     All methods in a class assigned to a single agent.
-- TAKE_JOB: agents self-select which methods to implement from the shared class context.
-
-This script uses CoMLRL's MAGRPOTrainer to handle sampling and PPO-style updates.
-
-Config file: LLM_Collab_Code_Completion/configs/config.yaml
-Key parameters:
-- dataset.name:   HF dataset name (e.g., FudanSELab/ClassEval)
-- data.split_ratio: train/eval split ratio (0..1)
-- collab.mode:    ONE | TAKE_JOB
-- collab.num_agents: number of agents when using TAKE_JOB
-- seed:           RNG seed for splits and method partition
-- trainer.*:      MAGRPO trainer args (epochs, lr, sampling settings, etc.)
-- model.*:        Base model and tokenizer settings
-
-This file intentionally keeps dataset-specific parsing/merging utilities
-in utils/ and the reward in rewards/CE_reward.py.
-"""
+"""MAGRPO training entrypoint for ClassEval module completion with collaboration."""
 
 import argparse
 import os
 import re
 import sys
-from typing import Any, Dict, List, Optional, Tuple, Callable
+from typing import Any, Dict, List, Optional
 import time
 
 try:
     import yaml  # type: ignore
 except Exception as e:  # pragma: no cover
     raise RuntimeError(
-        f"PyYAML is required to read config.yaml. Please install pyyaml. Error: {e}"
+        f"PyYAML is required to read the config file. Please install pyyaml. Error: {e}"
     )
 
 
-# Make repo importable
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(REPO_ROOT))
 sys.path.insert(0, REPO_ROOT)
@@ -45,21 +23,13 @@ from datasets import load_dataset  # type: ignore
 from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
 import torch  # type: ignore
 
-from comlrl.trainers.magrpo import MAGRPOConfig, MAGRPOTrainer  # type: ignore
-from comlrl.utils.reward_processor import RewardProcessors  # type: ignore
+from comlrl.trainers.magrpo import MAGRPOTrainer  # type: ignore
 from LLM_Collab_Code_Completion.utils.patches import apply_default_patches
 from LLM_Collab_Code_Completion.utils.trainer_args import get_trainer_args
 
-# Local utils
 from LLM_Collab_Code_Completion.utils.data import (
-    dataset_train_eval_split,
     extract_class_name,
     extract_incomplete_methods,
-)
-from LLM_Collab_Code_Completion.utils.parse_completion import extract_method_snippets
-from LLM_Collab_Code_Completion.utils.merge import merge_methods_into_skeleton
-from LLM_Collab_Code_Completion.utils.test_analysis import (
-    methods_called_per_test,
 )
 from LLM_Collab_Code_Completion.rewards.CE_reward import (
     get_reward_function,
@@ -68,10 +38,7 @@ from LLM_Collab_Code_Completion.train.strategies import (
     get_strategy,
     build_agent_formatters,
 )
-from LLM_Collab_Code_Completion.utils.prompting import (
-    build_agent_prompt,
-)
-# External transition (multi-turn)
+from LLM_Collab_Code_Completion.utils.prompting import build_agent_prompt
 from LLM_Collab_Code_Completion.external import (
     set_context_resolver as external_set_context_resolver,
     get_external_transition as external_get_transition,
@@ -83,8 +50,55 @@ def load_yaml(path: str) -> Dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
+def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> None:
+    for key, value in updates.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+
+
+def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
+    if not overrides:
+        return {}
+
+    alias_root = {
+        "trainer": "magrpo",
+        "data": "dataset",
+    }
+    result: Dict[str, Any] = {}
+
+    for override in overrides:
+        if "=" not in override:
+            raise ValueError(f"Invalid override format: {override}. Use key=value format.")
+
+        key, value = override.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key == "wandb.run_name":
+            key = "wandb.name"
+
+        keys = key.split(".")
+        if keys and keys[0] in alias_root:
+            keys[0] = alias_root[keys[0]]
+
+        try:
+            import ast
+            value = ast.literal_eval(value)
+        except Exception:
+            pass
+
+        current = result
+        for k in keys[:-1]:
+            if k not in current or not isinstance(current[k], dict):
+                current[k] = {}
+            current = current[k]
+        current[keys[-1]] = value
+
+    return result
+
+
 def _resolve_job_id() -> str:
-    """Resolve a job id from environment or fallback to timestamp."""
     jid = os.environ.get("SLURM_JOB_ID") or os.environ.get("JOB_ID")
     if jid:
         return str(jid)
@@ -100,7 +114,6 @@ def _expand_jobid_placeholder(path: str) -> str:
 
 
 def _preferred_split_key(ds_all: Any) -> Optional[str]:
-    """Pick a representative split key when loading a DatasetDict."""
     try:
         keys = list(ds_all.keys())  # type: ignore[attr-defined]
     except Exception:
@@ -112,7 +125,6 @@ def _preferred_split_key(ds_all: Any) -> Optional[str]:
 
 
 def _manual_slice_dataset(ds: Any, split_expr: Optional[str]) -> Any:
-    """Apply a best-effort slice when HF split loading fails."""
     if not split_expr or "[" not in split_expr or "]" not in split_expr:
         return ds
     try:
@@ -137,7 +149,6 @@ def _manual_slice_dataset(ds: Any, split_expr: Optional[str]) -> Any:
 
 
 def _load_dataset_with_optional_split(dataset_name: str, dataset_split: Optional[str]):
-    """Load dataset with an optional split, falling back to manual slicing if needed."""
     if dataset_split:
         try:
             return load_dataset(dataset_name, split=dataset_split)
@@ -158,110 +169,111 @@ def _load_dataset_with_optional_split(dataset_name: str, dataset_split: Optional
             except Exception:
                 pass
             sliced = _manual_slice_dataset(base_ds, dataset_split)
-            print(f"[data] Loaded {dataset_name} via fallback split={dataset_split}; using {len(sliced)} examples")
+            print(
+                f"[data] Loaded {dataset_name} via fallback split={dataset_split}; using {len(sliced)} examples"
+            )
             return sliced
-    return load_dataset(dataset_name)
+    ds_all = load_dataset(dataset_name)
+    try:
+        preferred = _preferred_split_key(ds_all)
+        if preferred is not None and hasattr(ds_all, "keys"):  # type: ignore[attr-defined]
+            return ds_all[preferred]
+    except Exception:
+        pass
+    return ds_all
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train GRPO/MAGRPO for ClassEval module completion")
+    parser = argparse.ArgumentParser(description="Train MAGRPO for ClassEval module completion")
     parser.add_argument(
         "--config",
         type=str,
-        default=os.path.join(REPO_ROOT, "configs", "config.yaml"),
+        default=os.path.join(REPO_ROOT, "configs", "magrpo_classeval_config.yaml"),
         help="Path to YAML config",
     )
-    parser.add_argument("--override", type=str, default=None, help="key1=val1,key2=val2 overrides")
+    parser.add_argument("--override", nargs="*", help="Override config values (format: key=value)")
     args = parser.parse_args()
 
     cfg = load_yaml(args.config)
-    # Simple inline overrides: key.path=value, comma separated
     if args.override:
-        for kv in str(args.override).split(","):
-            if not kv.strip() or "=" not in kv:
-                continue
-            k, v = kv.split("=", 1)
-            # Only support top-level or one-level nested overrides for simplicity
-            k = k.strip()
-            v = v.strip()
-            # Try to cast to number/bool where sensible
-            if v.lower() in ("true", "false"):
-                vv: Any = (v.lower() == "true")
-            else:
-                try:
-                    vv = int(v) if v.isdigit() else float(v)
-                except Exception:
-                    vv = v
-            # Assign into dict
-            cur = cfg
-            parts = k.split(".")
-            for p in parts[:-1]:
-                cur = cur.setdefault(p, {})
-            cur[parts[-1]] = vv
+        overrides = parse_overrides(args.override)
+        _deep_merge(cfg, overrides)
 
-    # Read configuration sections
     model_cfg = cfg.get("model", {})
-    data_cfg = cfg.get("data", {})
-    collab_cfg = cfg.get("collab", {})
+    dataset_cfg = cfg.get("dataset", {})
+    magrpo_cfg = cfg.get("magrpo", {})
     output_cfg = cfg.get("output", {})
-    seed = int(cfg.get("seed", 42))
-    # Optional: randomize seed when fixed_seed is false
-    fixed_seed_val = cfg.get("fixed_seed", True)
+    if not isinstance(magrpo_cfg, dict):
+        magrpo_cfg = {}
+        cfg["magrpo"] = magrpo_cfg
     try:
-        fixed_seed = bool(fixed_seed_val)
+        import secrets
+        seed = int(secrets.randbits(32))
     except Exception:
-        fixed_seed = True
-    if not fixed_seed:
         try:
-            import secrets  # stdlib
-            seed = int(secrets.randbits(32))
+            seed = int(abs(hash(f"{time.time_ns()}_{os.getpid()}")) % (2**31 - 1))
         except Exception:
-            try:
-                seed = int(abs(hash(f"{time.time_ns()}_{os.getpid()}")) % (2**31 - 1))
-            except Exception:
-                seed = int(time.time()) & 0x7FFFFFFF
+            seed = int(time.time()) & 0x7FFFFFFF
 
-    dataset_name_raw = data_cfg.get("dataset_name", "FudanSELab/ClassEval")
+    dataset_name_raw = dataset_cfg.get("name", "FudanSELab/ClassEval")
     dataset_name = str(dataset_name_raw).strip() or "FudanSELab/ClassEval"
-    dataset_split = data_cfg.get("train_split", None)
-    if isinstance(dataset_split, str):
-        dataset_split = dataset_split.strip() or None
-    split_ratio = float(data_cfg.get("split_ratio", 0.8))
+    dataset_type = str(dataset_cfg.get("type", "classeval")).strip() or "classeval"
+    train_split = dataset_cfg.get("train_split", None)
+    eval_split = dataset_cfg.get("eval_split", None)
+    if isinstance(train_split, str):
+        train_split = train_split.strip() or None
+    if isinstance(eval_split, str):
+        eval_split = eval_split.strip() or None
 
-    collab_mode = str(collab_cfg.get("mode", "ONE")).upper()
-    num_agents = int(collab_cfg.get("num_agents", 1 if collab_mode == "ONE" else 2))
-    if collab_mode == "ONE":
-        num_agents = 1
+    num_agents = int(magrpo_cfg.get("num_agents", 1))
 
-    # Load dataset (single split then random split by ratio)
+    if not eval_split:
+        print("dataset.eval_split is required when using slice-based loading.")
+        return
     try:
-        ds_all = _load_dataset_with_optional_split(dataset_name, dataset_split)
+        train_ds = _load_dataset_with_optional_split(dataset_name, train_split)
+        eval_ds = _load_dataset_with_optional_split(dataset_name, eval_split)
     except Exception as e:
-        print(f"Failed to load dataset name={dataset_name} split={dataset_split}: {e}")
+        print(
+            f"Failed to load dataset name={dataset_name} train_split={train_split} eval_split={eval_split}: {e}"
+        )
         return
 
-    train_ds, eval_ds = dataset_train_eval_split(ds_all, split_ratio=split_ratio, seed=seed)
-    # Tag datasets with phase and synthesize a unique 'prompt' key per sample
     try:
-        train_ds = train_ds.map(lambda _, i: {"phase": "train", "prompt": f"classeval:train:{i}"}, with_indices=True)
-        eval_ds = eval_ds.map(lambda _, i: {"phase": "eval", "prompt": f"classeval:eval:{i}"}, with_indices=True)
+        train_ds = train_ds.map(
+            lambda _, i: {"phase": "train", "prompt": f"classeval:train:{i}"},
+            with_indices=True,
+        )
+        eval_ds = eval_ds.map(
+            lambda _, i: {"phase": "eval", "prompt": f"classeval:eval:{i}"},
+            with_indices=True,
+        )
     except Exception:
-        # Fallback: at least set phase if map signature differs
         try:
             train_ds = train_ds.map(lambda _: {"phase": "train"})
             eval_ds = eval_ds.map(lambda _: {"phase": "eval"})
         except Exception:
             pass
 
-    # Optional: set temp base dir and keep flag for unit test runner
+    output_dir_cfg = magrpo_cfg.get("output_dir") or output_cfg.get(
+        "base_dir", os.path.join(os.getcwd(), "output")
+    )
+    output_dir = _expand_jobid_placeholder(str(output_dir_cfg))
+    magrpo_cfg["output_dir"] = output_dir
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+    except Exception:
+        pass
+
     tmp_base = None
     try:
         tmp_base = output_cfg.get("tmp_base_dir")
     except Exception:
         tmp_base = None
+    if not tmp_base:
+        tmp_base = os.path.join(output_dir, "tmp")
     if tmp_base:
         os.environ["CLASSEVAL_TMP_BASE"] = _expand_jobid_placeholder(str(tmp_base))
-    # keep_tmp can be bool or str
     keep_tmp_val = None
     try:
         keep_tmp_val = output_cfg.get("keep_tmp", None)
@@ -271,13 +283,10 @@ def main():
         keep_flag = str(keep_tmp_val).strip().lower() in ("1", "true", "yes", "on")
         os.environ["CLASSEVAL_KEEP_TMP"] = "1" if keep_flag else "0"
 
-    # Prepare tokenizer and agents
     model_name = model_cfg.get("name", "Qwen/Qwen2.5-3B")
     tokenizer_kwargs = model_cfg.get("tokenizer_kwargs", {})
     model_kwargs = model_cfg.get("model_kwargs", {})
 
-    # Memory-optimized defaults: prefer bf16 when available
-    # Allow users to set model.dtype or model.torch_dtype: "bf16" | "fp16" | "float16" | "bfloat16" | "float32"
     dtype_cfg = (
         model_cfg.get("dtype")
         or model_cfg.get("torch_dtype")
@@ -302,7 +311,6 @@ def main():
 
     torch_dtype = _map_dtype(dtype_cfg)
     if torch_dtype is None:
-        # Default to bf16 on modern GPUs; fall back to None (model default)
         try:
             if torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8:
                 torch_dtype = torch.bfloat16
@@ -312,7 +320,6 @@ def main():
     if torch_dtype is not None and "torch_dtype" not in model_kwargs:
         model_kwargs["torch_dtype"] = torch_dtype
 
-    # Additional memory savers
     model_kwargs.setdefault("low_cpu_mem_usage", True)
     model_kwargs.setdefault("attn_implementation", "sdpa")
 
@@ -323,13 +330,11 @@ def main():
     agents = []
     for idx in range(num_agents):
         agent = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
-        # Disable cache during training to save memory
         try:
             if hasattr(agent, "config"):
                 agent.config.use_cache = False
         except Exception:
             pass
-        # Enable gradient checkpointing when requested (default True)
         if bool(model_cfg.get("gradient_checkpointing", True)):
             try:
                 agent.gradient_checkpointing_enable()
@@ -337,69 +342,40 @@ def main():
                 pass
         agents.append(agent)
 
-    # Collaboration strategy
-    strategy = get_strategy(collab_mode, num_agents=num_agents, seed=seed)
+    strategy = get_strategy(num_agents=num_agents, seed=seed)
 
-    # Trainer arguments and formatter/reward
     magrpo_args = get_trainer_args(cfg)
-    # Debug-print to verify PPO options are threaded into MAGRPOConfig
-    try:
-        na = getattr(magrpo_args, "normalize_advantage", None)
-        ec = getattr(magrpo_args, "epsilon_clip", None)
-        lr = getattr(magrpo_args, "learning_rate", None)
-        print(f"[train] MAGRPOConfig opts: normalize_advantage={na} epsilon_clip={ec} learning_rate={lr}")
-    except Exception:
-        pass
     formatters = build_agent_formatters(strategy)
     reward_func = get_reward_function(strategy=strategy, num_agents=num_agents)
 
-    # Optional reward processing: shift/scale
-    reward_processor = None
-    rp_cfg = cfg.get("reward_processor", {})
-    if rp_cfg.get("enabled", False):
-        scale = rp_cfg.get("scale_factor", None)
-        shift = rp_cfg.get("shift", None)
-        if scale is not None:
-            reward_processor = RewardProcessors.scale(factor=float(scale))
-        if shift is not None:
-            shift_proc = RewardProcessors.shift(value=float(shift))
-            if reward_processor is None:
-                reward_processor = shift_proc
-            else:
-                prev = reward_processor
-                reward_processor = (lambda p=prev, s=shift_proc: (lambda x: s(p(x))))()
-
     wandb_cfg = cfg.get("wandb", None)
     wandb_config = None
-    if isinstance(wandb_cfg, dict) and wandb_cfg.get("enabled", False):
-        model_short = model_name.split("/")[-1]
-        # Support both `wandb.dir` and `wandb.output_dir` (the latter mapped to W&B dir)
-        dir_val = wandb_cfg.get("dir") or wandb_cfg.get("output_dir")
+    if isinstance(wandb_cfg, dict) and wandb_cfg.get("enabled", True):
+        dir_val = wandb_cfg.get("dir") or output_dir
         if dir_val:
             try:
                 dir_val = _expand_jobid_placeholder(str(dir_val))
             except Exception:
                 dir_val = str(dir_val)
-        # Build informative run name: CE_[num_agents]agents_[strategy]_[turns]
-        # When multi-turn, also include external mode, e.g., _2t_level_feedback
         try:
             num_turns_val = int(getattr(magrpo_args, "num_turns", 1))
         except Exception:
             num_turns_val = 1
-        ext_mode = str((cfg.get("external", {}) or {}).get("mode", "")).strip()
-        if num_turns_val <= 1:
-            turn_suffix = f"_{num_turns_val}t"
-        else:
-            turn_suffix = f"_{num_turns_val}t_{(ext_mode or 'external').lower()}"
-        run_name = f"CE_{num_agents}agents_{collab_mode}{turn_suffix}"
+        default_name = "codecompletion_classeval_magrpo"
+        run_name = wandb_cfg.get("name", default_name)
+        tags = wandb_cfg.get(
+            "tags",
+            ["magrpo", dataset_type, f"agents_{num_agents}", f"turns_{num_turns_val}"],
+        )
+        if not isinstance(tags, list):
+            tags = ["magrpo", dataset_type, f"agents_{num_agents}", f"turns_{num_turns_val}"]
         wandb_config = {
             "project": wandb_cfg.get("project", "classeval"),
             "entity": wandb_cfg.get("entity", None),
             "name": run_name,
             "dir": dir_val,
-            "tags": ["classeval", collab_mode.lower(), f"agents_{num_agents}"],
+            "tags": tags,
         }
-        # Best-effort: also set WANDB_DIR env to keep local files out of repo when dir is set
         if wandb_config.get("dir"):
             os.environ.setdefault("WANDB_DIR", str(wandb_config["dir"]))
 
@@ -413,15 +389,10 @@ def main():
         "eval_dataset": eval_ds,
         "tokenizer": tokenizer,
         "wandb_config": wandb_config,
-        "dataset_type": "classeval",
+        "dataset_type": dataset_type,
     }
-    if reward_processor is not None:
-        trainer_kwargs["reward_processor"] = reward_processor
-
-    # Apply in-repo patches (no external file changes)
     apply_default_patches(cfg)
 
-    # Multi-turn: register external transition when num_turns > 1
     is_multi_turn = False
     try:
         is_multi_turn = int(getattr(magrpo_args, "num_turns", 1)) > 1
@@ -431,8 +402,6 @@ def main():
     external_cfg = cfg.get("external", {})
 
     if is_multi_turn:
-        # Build a context map from per-agent initial prompts to dataset context
-        # We pre-materialize prompts for each split to avoid ambiguity.
         def _normalize_key(s: str) -> str:
             return " ".join((s or "").split()).strip()
 
@@ -451,7 +420,6 @@ def main():
                         "class_name": class_name,
                         "task_id": f"{split_name}:{idx}",
                     }
-                    # Partition once per example; build assigned lists per agent
                     try:
                         part = strategy.partition(example)
                     except Exception:
@@ -462,7 +430,6 @@ def main():
                             if 0 <= int(aid) < num_agents:
                                 assignments[int(aid)].append(m)
 
-                    # Build per-agent prompts and register all to the same context payload
                     prompts_for_agents: List[str] = []
                     for aidx, fmt in enumerate(formatters):
                         try:
@@ -479,11 +446,10 @@ def main():
                         "skeleton": skeleton,
                         "class_name": class_name,
                         "tests_eval": test_code,
-                        "tests_sandbox": test_code,  # same by default for ClassEval
+                        "tests_sandbox": test_code,
                         "method_names": method_names,
                         "assignments": assignments,
                     }
-                    # Also register dataset-level key used by MAGRPO to call external_transition
                     ds_key = _normalize_key(str(item.get("prompt", f"classeval:{split_name}:{idx}")))
                     if ds_key:
                         context_map[ds_key] = payload
@@ -501,19 +467,29 @@ def main():
 
         external_set_context_resolver(_resolver)
 
-        # Wire external transition into trainer
         external_mode = str(external_cfg.get("mode", "level_feedback"))
 
-        def external_transition_wrapper(prompt, agent_completions, num_agents=None, **_kwargs):
+        def external_transition_wrapper(
+            prompt,
+            agent_completions,
+            num_agents=None,
+            prompt_history_per_agent=None,
+            response_history_per_agent=None,
+            _default_num_agents=num_agents,
+            **_kwargs,
+        ):
             original_prompt_flag = external_cfg.get("original_prompt", True)
             previous_response_flag = external_cfg.get("previous_response", True)
+            num_agents_val = num_agents if num_agents is not None else _default_num_agents
             return external_get_transition(
                 prompt=prompt,
                 agent_completions=agent_completions,
-                num_agents=(num_agents if num_agents is not None else num_agents),
+                num_agents=num_agents_val,
                 mode=external_mode,
                 original_prompt=original_prompt_flag,
                 previous_response=previous_response_flag,
+                prompt_history_per_agent=prompt_history_per_agent,
+                response_history_per_agent=response_history_per_agent,
             )
 
         trainer_kwargs["external_transition"] = external_transition_wrapper
@@ -521,10 +497,8 @@ def main():
     trainer = MAGRPOTrainer(**trainer_kwargs)
     trainer.train()
 
-    # Optional save
     out_cfg = cfg.get("output", {})
     if bool(out_cfg.get("save_final_model", False)):
-        # Expand [jobid] placeholder if present to mirror wandb/output_dir handling
         save_path_cfg = out_cfg.get("save_path")
         if save_path_cfg:
             try:

@@ -148,12 +148,5 @@ def get_method_partition_for_example(
     seed: int,
     task_id: str | None = None,
 ) -> Dict[str, int]:
-    """Provide a simple deterministic partition for legacy consumers.
-
-    - ONE: all methods -> agent 0
-    - TAKE_JOB: agents self-select; return empty mapping
-    """
-    mode = (mode or "ONE").upper()
-    if mode == "TAKE_JOB":
-        return {}
-    return {m: 0 for m in methods}
+    """Provide a simple deterministic partition for legacy consumers."""
+    return {}

@@ -1,0 +1,60 @@
+model:
+  name: Qwen/Qwen2.5-Coder-3B-Instruct
+  type: qwen
+  temperature: 0.25
+  top_p: 0.6
+  max_length: 2048
+  tokenizer_kwargs: {}
+  model_kwargs:
+    trust_remote_code: true
+    device_map: auto
+    torch_dtype: bfloat16
+
+dataset:
+  name: FudanSELab/ClassEval
+  type: classeval
+  train_split: test[:66]
+  eval_split: test[66:82]
+
+output:
+  base_dir: output
+  save_final_model: false
+  save_path: output/final_model
+  verbose: false
+  keep_tmp: true
+  tmp_base_dir: output/tmp
+
+external:
+  mode: code_feedback
+  sandbox_slice: null
+  original_prompt: true
+  previous_response: true
+
+magrpo:
+  num_turns: 2
+  num_train_epochs: 8
+  per_device_train_batch_size: 1
+  rollout_buffer_size: 1
+  learning_rate: 1e-5
+  eval_interval: 4
+  eval_num_samples: 4
+  num_generations: 3
+  max_new_tokens: 600
+  temperature: 0.25
+  top_p: 0.6
+  top_k: null
+  joint_mode: aligned
+  num_agents: 2
+  discount: 0.9
+  termination_threshold: 7.8
+  logging_steps: 50
+  save_steps: 200
+  normalize_advantage: false
+  epsilon_clip: null
+
+wandb:
+  project: classeval_dev
+  entity: null
+  name: codecompletion_classeval_magrpo
+  dir: output
+  tags: ["magrpo", "classeval", "code-completion", "turns_2"]

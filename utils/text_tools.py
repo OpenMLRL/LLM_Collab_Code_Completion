@@ -4,7 +4,7 @@ Utility helpers for text tokenization and config-driven limits.
 - Loads a tokenizer via `tokenizers` fast backend first; falls back to
   `transformers.AutoTokenizer`.
 - Caches tokenizer to avoid repeated expensive loads.
-- Reads `model.name` and `trainer.max_new_tokens` from repo config with
+- Reads `model.name` and `magrpo.max_new_tokens` from repo config with
   best-effort YAML parsing and a fast fallback when YAML isn't available.
 """
 
@@ -25,7 +25,7 @@ _CACHE: dict[str, Any] = {
 def _repo_config_path() -> str:
     here = os.path.abspath(os.path.dirname(__file__))
     repo_root = os.path.dirname(here)  # LLM_Collab_Code_Completion
-    return os.path.join(repo_root, "configs", "config.yaml")
+    return os.path.join(repo_root, "configs", "magrpo_classeval_config.yaml")
 
 
 def _read_yaml_safely(path: str) -> Optional[dict]:
@@ -108,7 +108,7 @@ def read_default_model_from_config() -> Optional[str]:
 
 
 def get_effective_max_new_tokens(default: int = 512) -> int:
-    """Read trainer.max_new_tokens with env override and caching.
+    """Read magrpo.max_new_tokens with env override and caching.
 
     - Env `CLASSEVAL_MAX_NEW_TOKENS` overrides config.
     - Uses YAML when available; falls back to fast scan.
@@ -130,8 +130,8 @@ def get_effective_max_new_tokens(default: int = 512) -> int:
     data = _read_yaml_safely(cfg)
     if isinstance(data, dict):
         try:
-            trainer = data.get("trainer") or {}
-            v = trainer.get("max_new_tokens") if isinstance(trainer, dict) else None
+            magrpo = data.get("magrpo") or {}
+            v = magrpo.get("max_new_tokens") if isinstance(magrpo, dict) else None
             if isinstance(v, int):
                 _CACHE["max_new_tokens"] = v
                 return v
@@ -246,4 +246,3 @@ def count_new_tokens(text: str, add_special_tokens: bool = False) -> int:
         return max(1, int(len(text) / 4))
     except Exception:
         return len(text)
-
