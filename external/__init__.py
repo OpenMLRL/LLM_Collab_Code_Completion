@@ -201,8 +201,6 @@ def get_external_transition(
             assignments=assignments,
             agent_completions=list(agent_completions),
             test_code=test_code,
-            original_prompt_flag=original_prompt_flag,
-            previous_response_flag=previous_response_flag,
             num_agents=n,
             prompt_history_per_agent=prompt_history_per_agent,
             response_history_per_agent=response_history_per_agent,

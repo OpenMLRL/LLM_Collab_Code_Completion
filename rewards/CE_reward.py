@@ -5,20 +5,11 @@ Reward pipeline for ClassEval collaborative completion.
   a syntax check, and (when valid) runs the hidden tests in an isolated subprocess while
   recording per-test outcomes.
 - `get_reward_function` parses each agent’s code, builds per-method selections, and applies
-  the redesigned ClassEval shaping:
-    * Early gates: penalize agents that emit zero methods, require union coverage ≥50%, and
-      reject samples whose total picks exceed `2V+2`.
-    * `lv1`: coverage score `2 * |union| / V` (with a soft zero zone when coverage ∈ [0.5, 0.65)).
-    * `lv2`: total-picks/overlap control implemented as a Jaccard-based penalty to discourage
-      duplicate work; combined with `lv1`/`lv3` via a 0.5 scaling factor.
-    * `lv3`: load-balance reward computed from the mean-squared deviation of per-agent method
-      counts around the ideal `V / N`.
-    * `lv4`: syntax bonus (2 points) that also carries a token-length penalty per agent; if
-      syntax fails the total reward is forced to zero.
-    * `lv5`: test bonus proportional to the number of agents responsible for each passing test,
-      using the per-test method usage analysis.
-- Counters track how many samples clear each gate, and optional logging hooks export the
-  individual levels for eval batches.
+  the simplified ClassEval shaping:
+    * `lv1`: syntax bonus (2 points); if syntax fails the total reward is forced to zero.
+    * `lv2`: test bonus proportional to the pass rate (passed/total).
+    * `lv3`: overlap penalty normalized by total methods (range [-1, 0]).
+- Optional logging hooks export the individual levels for eval batches.
 """
 
 from __future__ import annotations
@@ -33,10 +24,6 @@ import tokenize
 import os
 
 
-from LLM_Collab_Code_Completion.utils.text_tools import (
-    count_new_tokens,
-    get_effective_max_new_tokens,
-)
 
 def _combine_code(impl_code: str, test_code: str) -> str:
     return (impl_code or "").rstrip() + "\n\n" + (test_code or "").lstrip()
@@ -311,7 +298,6 @@ from LLM_Collab_Code_Completion.utils.merge import (
     merge_methods_into_skeleton,
     build_method_map_with_syntax_selection,
 )
-from LLM_Collab_Code_Completion.utils.test_analysis import methods_called_per_test
 
 
 def _compute_call_graph_components(source_code: str, class_name: str, methods: Set[str]) -> List[Set[str]]:
@@ -389,17 +375,16 @@ def _compute_call_graph_components(source_code: str, class_name: str, methods: S
             comps.append(comp)
     return comps
 
-# count rate of passing lv1 + lv2
-_count_total, _count_pass_lv1_2, _count_pass_lv0 = 0, 0, 0
-_count_pass_syntax = 0
+# count rate of samples processed (debug only)
+_count_total = 0
 
 def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]:
     """Return a reward function
     """
 
     def reward_wrapper(*agent_completions, batch_items=None, prompts=None):
-        # Use module-level counters for pass rate tracking
-        global _count_total, _count_pass_lv1_2, _count_pass_lv0
+        # Use module-level counter for debug tracking
+        global _count_total
         if not agent_completions:
             return []
         batch_size = len(agent_completions[0])
@@ -416,6 +401,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
             test_code: str = example.get("test", "")
             class_name = extract_class_name(skeleton) or ""
             method_names = extract_incomplete_methods(skeleton)
+            total_methods = len(method_names)
 
             partition = strategy.partition(example)
 
@@ -431,112 +417,26 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 parsed_all = extract_method_snippets(comp_text or "", allowed_methods=set(method_names))
                 A_sets.append(set(parsed_all.keys()))
 
-            INF = 1
             _count_total += 1
 
-            V_set: Set[str] = set(method_names)
-            V = len(V_set)
-
-            # Early penalty: penalize by number of agents with zero functions (k * -INF) and skip
+            # lv3: overlap penalty normalized by total methods
+            lv3 = 0.0
             try:
-                zeros = sum(1 for s in A_sets if (len(s) if s is not None else 0) in (0, V))
-                if zeros > 0:
-                    rewards.append(-INF * 0.5 * zeros)
-                    continue
+                method_hits: Dict[str, int] = {}
+                for s in A_sets:
+                    if not s:
+                        continue
+                    for m in s:
+                        method_hits[m] = method_hits.get(m, 0) + 1
+                overlap_count = sum(1 for cnt in method_hits.values() if cnt > 1)
+                if total_methods > 0:
+                    lv3 = -float(overlap_count) / float(total_methods)
+                else:
+                    lv3 = 0.0
             except Exception:
-                # fall back to normal flow on unexpected structure
-                pass
-            
-            _count_pass_lv0 += 1
+                lv3 = 0.0
 
-            # New reward rules (lv1 + lv2)
-            
-            if V <= 0:
-                rewards.append(-INF)
-                continue
-
-            # lv1: 2 * (|union| / V); if coverage < 1/2 => reward 0
-            union_size = len(set().union(*A_sets)) if A_sets else 0
-            coverage_ratio = union_size / V
-            if coverage_ratio < 0.5:
-                rewards.append(-INF)
-                continue
-            elif coverage_ratio < 0.65:
-                rewards.append(0)
-                continue
-            
-            lv1 = 2.0 * coverage_ratio
-            if coverage_ratio == 1.0:
-                lv1 += 0.5  # bonus for full coverage
-
-            # lv2: constrain total picks S = sum_i |A_i|
-            S_total = sum(len(s) for s in A_sets)
-            # Early termination if total picks exceed 2V
-            if S_total >= 2 * V:
-                rewards.append(-INF)
-                continue
-
-            # Piecewise quadratic for lv2 (total picks control)
-            # - Left branch: lv2_left(S) = 2 - 3 * ((S - V)^2) / V^2
-            # - Right branch: lv2_right(S) = 2 - 3 * ((S - V)^2) / (V + 1)^2
-            # if V > 0:
-            #     if S_total <= V:
-            #         dv = float(S_total) - float(V)
-            #         lv2 = 2.0 - 3.0 * (dv * dv) / (float(V) * float(V))
-            #     elif S_total <= V * 2 + 1:
-            #         dv = float(S_total) - float(V)
-            #         lv2 = 2.0 - 3.0 * (dv * dv) / float((V + 1) * (V + 1))
-            #     elif S_total == V * 2 + 2:
-            #         lv2 = -2.5
-            #     else:
-            #         lv2 = -2.0 * INF
-            # else:
-            #     lv2 = -2.0 * INF
-
-            # Add Pairwise Jaccard penalty (mean) into lv2, mapped to [-2, 2]
-            # J(A_i, A_j) = |A_i ∩ A_j| / |A_i ∪ A_j|, averaged over all unordered pairs.
-            # Map mean_J in [0,1] to term T in [-2,2] via T = 2 * (1 - 2*mean_J).
-            lv2 = 0
-            try:
-                N_pairs = 0
-                sum_J = 0.0
-                N_sets = len(A_sets)
-                for p in range(N_sets):
-                    Si = A_sets[p] or set()
-                    for q in range(p + 1, N_sets):
-                        Sj = A_sets[q] or set()
-                        u = len(Si | Sj)
-                        if u == 0:
-                            J = 0.0
-                        else:
-                            J = len(Si & Sj) / float(u)
-                        sum_J += J
-                        N_pairs += 1
-                mean_J = (sum_J / N_pairs) if N_pairs > 0 else 0.0
-                jaccard_term = 1.0 * (1.0 - 2.0 * mean_J)
-                # if jaccard_term > 2.0:
-                #     jaccard_term = 2.0
-                # elif jaccard_term < -2.0:
-                #     jaccard_term = -2.0
-                lv2 += jaccard_term
-            except Exception:
-                pass
-
-            # lv3: balance via MSD of chosen set sizes
-            N = max(1, int(num_agents))
-            t = V / N
-            s_list = [float(len(s)) for s in A_sets] if A_sets else [0.0] * N
-            msd = (sum((si - t) ** 2 for si in s_list) / N) if N > 0 else 0.0
-            msd_max = (1.0 / N) * (V ** 2) * (1.0 - 1.0 / N) if N > 0 else 0.0
-            eps = 1e-8
-            lv3 = 3 * max(0.0, 1.0 - (msd / (msd_max + eps)))
-
-            discount_lv123 = 0.5
-            lv1 *= discount_lv123
-            lv2 *= discount_lv123
-            lv3 *= discount_lv123
-
-            # ---------- Added lv4 (syntax) and lv5 (tests) per prior design ----------
+            # ---------- lv1 (syntax) and lv2 (tests) ----------
             # Build merged candidate code from agent completions for syntax/tests evaluation.
             # For duplicate method names across agents, choose only syntactically valid snippets;
             # if multiple are valid, pick one at random. Invalid-only methods are omitted.
@@ -556,94 +456,23 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 method_to_code=method_to_code,
             )
 
-            # Compute per-test used methods for weighting (reused from earlier version)
-            per_test_methods = methods_called_per_test(
-                test_code=test_code,
-                candidate_methods=set(method_names),
-                class_name=class_name,
-            )
-
             run_res = run_unittests_with_details(combined_code, test_code)
             syntax_ok = bool(run_res.get("syntax_ok", False))
-            lv4 = 2.0 if syntax_ok else 0.0
+            lv1 = 2.0 if syntax_ok else 0.0
 
             # ensure syntax_ok...
             if not syntax_ok:
                 rewards.append(0)
                 continue
 
-            # Per-agent length penalty based on max_new_tokens L from config:
-            # For each agent with output token count x, define a parabola with axis at a=(L-1)/2,
-            # passing through ((L-1)/2, 0) and (L-1, -lv4/num_agents). When x < a, penalty is 0.
-            try:
-                base_lv4 = float(lv4)
-                N_agents = int(num_agents) if num_agents else max(1, len(agent_texts))
-                # Allow override via env; else use parsed config value
-                try:
-                    L = int(os.environ.get("CLASSEVAL_MAX_NEW_TOKENS", get_effective_max_new_tokens()))
-                except Exception:
-                    L = get_effective_max_new_tokens()
-                a = (float(L) - 1.0) / 2.0
-                if a > 0.0 and N_agents > 0 and base_lv4 > 0.0:
-                    k = (base_lv4 / float(N_agents)) / (a * a)
-                    total_penalty = 0.0
-                    for agent_idx in range(N_agents):
-                        comp_text = agent_texts[agent_idx] if agent_idx < len(agent_texts) else ""
-                        # Prefer actual token count via HF tokenizer; fallback heuristic otherwise
-                        try:
-                            x_int = count_new_tokens(comp_text or "")
-                        except Exception:
-                            x_int = len((comp_text or "").split())
-                        # Clamp to [0, L-1] per definition
-                        if x_int < 0:
-                            x_int = 0
-                        if x_int > (L - 1):
-                            x_int = (L - 1)
-                        x = float(x_int)
-                        if x >= a:
-                            y = -k * (x - a) * (x - a)
-                            # Cap per-agent penalty at [-base_lv4/N_agents, 0]
-                            lower_cap = -base_lv4 / float(N_agents)
-                            if y < lower_cap:
-                                y = lower_cap
-                            if y > 0.0:
-                                y = 0.0
-                            total_penalty += y
-                    lv4 = float(lv4) + total_penalty * 0.6
-            except Exception:
-                # On any parsing/calculation issues, leave lv4 unchanged
-                pass
+            tests_run = int(run_res.get("testsRun") or 0)
+            passed_cnt = int(run_res.get("passed") or 0)
+            lv2 = (float(passed_cnt) / float(tests_run)) if tests_run > 0 else 0.0
 
-            # _count_pass_syntax += 1
-
-            test_results = run_res.get("test_results", []) or []
-            num_x_total = 0
-            num_x_passed = 0
-            for tr in test_results:
-                t_id = str(tr.get("id", ""))
-                outcome = str(tr.get("outcome", ""))
-                used = per_test_methods.get(t_id, set())
-                if not used:
-                    continue
-                if getattr(strategy, "self_select", False):
-                    x = sum(1 for s in A_sets if s & used)
-                else:
-                    agents_involved = {partition.get(m, -1) for m in used if m in partition}
-                    agents_involved.discard(-1)
-                    x = len(agents_involved)
-                if x > 0:
-                    num_x_total += x
-                    if outcome == "passed":
-                        num_x_passed += x
-            lv5 = (3.0 * (num_x_passed / num_x_total)) if num_x_total > 0 else 0.0
-
-            _count_pass_lv1_2 += 1
-            total = float(lv1 + lv2 + lv3 + lv4 + lv5)
+            total = float(lv1 + lv2 + lv3)
 
             print('=' * 50)
-            print(lv1, lv2, lv3, lv4, lv5)
-            print(_count_pass_lv0 / _count_total)
-            print(_count_pass_lv1_2 / _count_total)
+            print(lv1, lv2, lv3)
             # print(_count_pass_syntax / _count_total)
 
             # Optional eval logging (reuse field names for compatibility)
@@ -657,14 +486,15 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                         cover=lv1,
                         overlap=lv2,
                         balance=lv3,
-                        components=None,
+                        components=0.0,
                         total=total,
                         step=None,
                         commit=False,
                         prefix="eval/ce_reward",
                         extra={
-                            "level4_syntax": lv4,
-                            "level5_tests": lv5,
+                            "level1_syntax": lv1,
+                            "level2_tests": lv2,
+                            "level3_overlap_penalty": lv3,
                         },
                     )
                 except Exception:
@@ -676,7 +506,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 task_id = example.get("task_id")
                 header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
                 print(header, flush=True)
-                print(f"total funcs: {V}")
+                print(f"total funcs: {total_methods}")
                 for aidx, text in enumerate(agent_texts):
                     funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
                     snippet = (text or "")[:preview_limit]
