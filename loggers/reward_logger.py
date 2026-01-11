@@ -46,8 +46,7 @@ class RewardLogger:
             return
         try:
             import wandb  # type: ignore
-
-        filtered = {k: v for k, v in dict(metrics).items() if v is not None}
+            filtered = {k: v for k, v in dict(metrics).items() if v is not None}
             if step is None:
                 wandb.log(filtered, commit=commit)
             else:
