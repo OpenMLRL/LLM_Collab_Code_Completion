@@ -465,16 +465,17 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             total = float(lv1 + lv2 + lv3)
 
-            if VERBOSE:
-                print("=" * 50)
-                print(lv1, lv2, lv3)
-
             # Optional eval logging (reuse field names for compatibility)
             try:
                 phase = str(example.get("phase", "")).lower() if isinstance(example, dict) else ""
             except Exception:
                 phase = ""
-            if phase == "eval":
+            is_eval = phase == "eval"
+
+            if VERBOSE and is_eval:
+                print("=" * 50)
+                print(lv1, lv2, lv3)
+            if is_eval:
                 try:
                     RewardLogger.log_ce_levels(
                         cover=lv1,
@@ -493,7 +494,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 except Exception:
                     pass
 
-            if VERBOSE:
+            if VERBOSE and is_eval:
                 # Preview generations: print each agent's code and number of functions parsed
                 try:
                     preview_limit = 5000
