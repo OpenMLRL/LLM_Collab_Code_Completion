@@ -85,7 +85,10 @@ def extract_incomplete_methods(skeleton: str) -> List[str]:
     class_name = extract_class_name(sk)
     if not class_name:
         return []
-    tree = ast.parse(sk)
+    try:
+        tree = ast.parse(sk)
+    except Exception:
+        return []
     targets: List[str] = []
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == class_name:
@@ -126,7 +129,10 @@ def extract_method_param_counts(skeleton: str) -> Dict[str, int]:
     class_name = extract_class_name(sk)
     if not class_name:
         return {}
-    tree = ast.parse(sk)
+    try:
+        tree = ast.parse(sk)
+    except Exception:
+        return {}
 
     def _count_args(args: ast.arguments) -> int:
         count = len(getattr(args, "posonlyargs", []) or [])
