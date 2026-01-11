@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import random
 import re
 from typing import Any, Dict, Iterable, List, Mapping, Sequence, Tuple
@@ -80,38 +81,11 @@ def extract_incomplete_methods(skeleton: str) -> List[str]:
     We consider a method incomplete if its body is empty, only has a docstring, contains only 'pass',
     or raises NotImplementedError.
     """
-    try:
-        import ast
-    except Exception:
-        # Fallback: simple regex for 'def name(' within the first class block
-        methods = []
-        in_class = False
-        for line in skeleton.splitlines():
-            if line.strip().startswith("class "):
-                in_class = True
-            if in_class and line.lstrip().startswith("def "):
-                name = line.strip().split()[1].split("(")[0]
-                methods.append(name)
-        return methods
-
     sk = _sanitize_python_source(skeleton)
     class_name = extract_class_name(sk)
     if not class_name:
         return []
-    try:
-        tree = ast.parse(sk)
-    except Exception:
-        # Fallback: simple regex for 'def name(' within the first class block
-        methods = []
-        in_class = False
-        for line in sk.splitlines():
-            if line.strip().startswith("class ") and class_name in line:
-                in_class = True
-                continue
-            if in_class and line.lstrip().startswith("def "):
-                name = line.strip().split()[1].split("(")[0]
-                methods.append(name)
-        return methods
+    tree = ast.parse(sk)
     targets: List[str] = []
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == class_name:
@@ -148,20 +122,11 @@ def extract_method_param_counts(skeleton: str) -> Dict[str, int]:
     and treats *args/**kwargs as 1 each when present. The count includes "self"/"cls"
     when they appear in the signature.
     """
-    try:
-        import ast
-    except Exception:
-        return {}
-
     sk = _sanitize_python_source(skeleton)
     class_name = extract_class_name(sk)
     if not class_name:
         return {}
-
-    try:
-        tree = ast.parse(sk)
-    except Exception:
-        return {}
+    tree = ast.parse(sk)
 
     def _count_args(args: ast.arguments) -> int:
         count = len(getattr(args, "posonlyargs", []) or [])
