@@ -542,7 +542,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
             total = float(lv1 + lv2 + lv3)
 
-            # Optional eval logging (reuse field names for compatibility)
+            # Optional eval logging (mean metrics per eval sweep)
             try:
                 phase = str(example.get("phase", "")).lower() if isinstance(example, dict) else ""
             except Exception:
@@ -566,19 +566,15 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                     if should_log:
                         def _mean(xs: List[float]) -> float:
                             return float(sum(xs) / len(xs)) if xs else 0.0
-                        RewardLogger.log_ce_levels(
-                            cover=_mean(_EVAL_LV1),
-                            overlap=_mean(_EVAL_LV2),
-                            balance=_mean(_EVAL_LV3),
-                            total=_mean(_EVAL_TOTAL),
+                        RewardLogger.log(
+                            {
+                                "eval/ce_reward/level1_syntax": _mean(_EVAL_LV1),
+                                "eval/ce_reward/level2_tests": _mean(_EVAL_LV2),
+                                "eval/ce_reward/level3_overlap_penalty": _mean(_EVAL_LV3),
+                                "eval/ce_reward/total": _mean(_EVAL_TOTAL),
+                            },
                             step=None,
                             commit=False,
-                            prefix="eval/ce_reward",
-                            extra={
-                                "level1_syntax": _mean(_EVAL_LV1),
-                                "level2_tests": _mean(_EVAL_LV2),
-                                "level3_overlap_penalty": _mean(_EVAL_LV3),
-                            },
                         )
                         reset_eval_log_state()
                 except Exception:
