@@ -361,6 +361,27 @@ def main():
     except Exception:
         pass
     try:
+        num_turns_val = int(getattr(magrpo_args, "num_turns", 1) or 1)
+    except Exception:
+        num_turns_val = 1
+    try:
+        eval_samples = int(getattr(magrpo_args, "eval_num_samples", 0) or 0)
+    except Exception:
+        eval_samples = 0
+    try:
+        eval_len = len(eval_ds) if eval_ds is not None else 0
+    except Exception:
+        eval_len = 0
+    try:
+        if eval_samples > 0:
+            eval_count = min(eval_samples, eval_len) if eval_len > 0 else eval_samples
+            ce_reward.EVAL_LOG_EVERY = int(eval_count) * max(1, num_turns_val)
+        else:
+            ce_reward.EVAL_LOG_EVERY = None
+        ce_reward.reset_eval_log_state()
+    except Exception:
+        pass
+    try:
         external_mod.VERBOSE = output_verbose
     except Exception:
         pass

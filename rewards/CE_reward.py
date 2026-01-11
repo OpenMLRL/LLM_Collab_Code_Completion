@@ -25,6 +25,20 @@ import tokenize
 import os
 
 VERBOSE = True
+TEST_TIMEOUT: float = 40.0
+MAX_TIMEOUTS: int = 3
+EVAL_LOG_EVERY: int | None = None
+_EVAL_LV1: List[float] = []
+_EVAL_LV2: List[float] = []
+_EVAL_LV3: List[float] = []
+_EVAL_TOTAL: List[float] = []
+
+
+def reset_eval_log_state() -> None:
+    _EVAL_LV1.clear()
+    _EVAL_LV2.clear()
+    _EVAL_LV3.clear()
+    _EVAL_TOTAL.clear()
 
 
 
@@ -32,7 +46,9 @@ def _combine_code(impl_code: str, test_code: str) -> str:
     return (impl_code or "").rstrip() + "\n\n" + (test_code or "").lstrip()
 
 
-def run_unittests_with_details(impl_code: str, test_code: str, timeout: int = 40) -> Dict[str, Any]:
+def run_unittests_with_details(
+    impl_code: str, test_code: str, timeout: float | None = None
+) -> Dict[str, Any]:
     """Run unittests with a custom TestResult that records per-test outcomes.
 
     Behavior:
@@ -48,6 +64,7 @@ def run_unittests_with_details(impl_code: str, test_code: str, timeout: int = 40
     - timeout: bool
     """
     combined_code = _combine_code(impl_code, test_code)
+    timeout_val = TEST_TIMEOUT if timeout is None else float(timeout)
 
     # Syntax check first (no formatting here; formatting is applied upstream after merge)
     try:
@@ -72,22 +89,77 @@ def run_unittests_with_details(impl_code: str, test_code: str, timeout: int = 40
         }
 
     runner_code = """
-import json, sys, importlib.util, unittest, io, time, traceback, contextlib
+import json, sys, importlib.util, unittest, io, time, traceback, contextlib, os, signal
+
+TEST_TIMEOUT = float(os.getenv("CE_TEST_TIMEOUT", "40"))
+MAX_TIMEOUTS = int(os.getenv("CE_MAX_TIMEOUTS", "3"))
+
+class TimeoutException(Exception):
+    pass
+
+def timeout_handler(signum, frame):
+    raise TimeoutException("Test timed out")
+
+def _set_timeout():
+    if TEST_TIMEOUT <= 0:
+        return
+    try:
+        signal.signal(signal.SIGALRM, timeout_handler)
+        if hasattr(signal, "setitimer"):
+            signal.setitimer(signal.ITIMER_REAL, TEST_TIMEOUT)
+        else:
+            signal.alarm(int(TEST_TIMEOUT))
+    except Exception:
+        return
+
+def _clear_timeout():
+    if TEST_TIMEOUT <= 0:
+        return
+    try:
+        if hasattr(signal, "setitimer"):
+            signal.setitimer(signal.ITIMER_REAL, 0)
+        else:
+            signal.alarm(0)
+    except Exception:
+        return
 
 class RecordingResult(unittest.TextTestResult):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.records = []
+        self.timeout_count = 0
+    def startTest(self, test):
+        super().startTest(test)
+        if MAX_TIMEOUTS > 0 and self.timeout_count >= MAX_TIMEOUTS:
+            self.shouldStop = True
+            return
+        _set_timeout()
+    def stopTest(self, test):
+        _clear_timeout()
+        super().stopTest(test)
     def addSuccess(self, test):
+        _clear_timeout()
         super().addSuccess(test)
         self.records.append({"id": str(test), "outcome": "passed"})
     def addFailure(self, test, err):
+        _clear_timeout()
         super().addFailure(test, err)
         self.records.append({"id": str(test), "outcome": "failed"})
     def addError(self, test, err):
+        _clear_timeout()
         super().addError(test, err)
-        self.records.append({"id": str(test), "outcome": "error"})
+        outcome = "error"
+        try:
+            if err and isinstance(err, tuple) and err[0] is TimeoutException:
+                outcome = "timeout"
+                self.timeout_count += 1
+        except Exception:
+            outcome = "error"
+        self.records.append({"id": str(test), "outcome": outcome})
+        if MAX_TIMEOUTS > 0 and self.timeout_count >= MAX_TIMEOUTS:
+            self.shouldStop = True
     def addSkip(self, test, reason):
+        _clear_timeout()
         super().addSkip(test, reason)
         self.records.append({"id": str(test), "outcome": "skipped"})
 
@@ -108,6 +180,7 @@ def main(py_file):
         errors=len(res.errors),
         skipped=len(res.skipped),
         passed=res.testsRun - len(res.failures) - len(res.errors) - len(res.skipped),
+        timeouts=getattr(res, "timeout_count", 0),
         success=res.wasSuccessful(),
         test_results=getattr(res, "records", []),
         output=out,
@@ -153,13 +226,17 @@ if __name__ == "__main__":
         with open(py_path, "w", encoding="utf-8") as fh:
             fh.write(combined_code)
         try:
+            env = os.environ.copy()
+            env["CE_TEST_TIMEOUT"] = str(timeout_val)
+            env["CE_MAX_TIMEOUTS"] = str(MAX_TIMEOUTS)
             proc = subprocess.run(
                 [sys.executable, "-c", runner_code, payload_name],
                 capture_output=True,
                 text=True,
-                timeout=timeout,
+                timeout=timeout_val,
                 check=False,
                 cwd=tmpdir_abs,
+                env=env,
             )
         except subprocess.TimeoutExpired:
             return {
@@ -477,20 +554,33 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 print(lv1, lv2, lv3)
             if is_eval:
                 try:
-                    RewardLogger.log_ce_levels(
-                        cover=lv1,
-                        overlap=lv2,
-                        balance=lv3,
-                        total=total,
-                        step=None,
-                        commit=False,
-                        prefix="eval/ce_reward",
-                        extra={
-                            "level1_syntax": lv1,
-                            "level2_tests": lv2,
-                            "level3_overlap_penalty": lv3,
-                        },
-                    )
+                    _EVAL_LV1.append(float(lv1))
+                    _EVAL_LV2.append(float(lv2))
+                    _EVAL_LV3.append(float(lv3))
+                    _EVAL_TOTAL.append(float(total))
+                    should_log = False
+                    if EVAL_LOG_EVERY is None or EVAL_LOG_EVERY <= 0:
+                        should_log = True
+                    elif len(_EVAL_LV1) >= int(EVAL_LOG_EVERY):
+                        should_log = True
+                    if should_log:
+                        def _mean(xs: List[float]) -> float:
+                            return float(sum(xs) / len(xs)) if xs else 0.0
+                        RewardLogger.log_ce_levels(
+                            cover=_mean(_EVAL_LV1),
+                            overlap=_mean(_EVAL_LV2),
+                            balance=_mean(_EVAL_LV3),
+                            total=_mean(_EVAL_TOTAL),
+                            step=None,
+                            commit=False,
+                            prefix="eval/ce_reward",
+                            extra={
+                                "level1_syntax": _mean(_EVAL_LV1),
+                                "level2_tests": _mean(_EVAL_LV2),
+                                "level3_overlap_penalty": _mean(_EVAL_LV3),
+                            },
+                        )
+                        reset_eval_log_state()
                 except Exception:
                     pass
 
