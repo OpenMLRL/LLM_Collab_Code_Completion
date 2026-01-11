@@ -16,9 +16,12 @@ Reward pipeline for ClassEval collaborative completion.
 from __future__ import annotations
 
 import json
+import copy
+import hashlib
 import subprocess
 import sys
 import tempfile
+from collections import OrderedDict
 from typing import Any, Dict, List, Set
 import io
 import tokenize
@@ -27,6 +30,9 @@ import os
 VERBOSE = True
 TEST_TIMEOUT: float = 40.0
 MAX_TIMEOUTS: int = 3
+SUBPROCESS_TIMEOUT: float = TEST_TIMEOUT * max(1, MAX_TIMEOUTS) + 5.0
+TEST_CACHE_MAX: int = 256
+_TEST_CACHE: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
 EVAL_LOG_EVERY: int | None = None
 _EVAL_LV1: List[float] = []
 _EVAL_LV2: List[float] = []
@@ -64,7 +70,11 @@ def run_unittests_with_details(
     - timeout: bool
     """
     combined_code = _combine_code(impl_code, test_code)
-    timeout_val = TEST_TIMEOUT if timeout is None else float(timeout)
+    timeout_val = SUBPROCESS_TIMEOUT if timeout is None else float(timeout)
+    cache_key = _make_test_cache_key(combined_code, test_code, timeout_val)
+    cached = _cache_get_result(cache_key)
+    if cached is not None:
+        return cached
 
     # Syntax check first (no formatting here; formatting is applied upstream after merge)
     try:
@@ -73,7 +83,7 @@ def run_unittests_with_details(
     except Exception as e:
         syntax_ok = False
         # Early return: do not run tests when syntax is invalid
-        return {
+        res = {
             "syntax_ok": False,
             "timeout": False,
             "success": False,
@@ -87,6 +97,8 @@ def run_unittests_with_details(
             "exit_code": None,
             "test_results": [],
         }
+        _cache_set_result(cache_key, res)
+        return res
 
     runner_code = """
 import json, sys, importlib.util, unittest, io, time, traceback, contextlib, os, signal
@@ -227,7 +239,7 @@ if __name__ == "__main__":
             fh.write(combined_code)
         try:
             env = os.environ.copy()
-            env["CE_TEST_TIMEOUT"] = str(timeout_val)
+            env["CE_TEST_TIMEOUT"] = str(TEST_TIMEOUT)
             env["CE_MAX_TIMEOUTS"] = str(MAX_TIMEOUTS)
             proc = subprocess.run(
                 [sys.executable, "-c", runner_code, payload_name],
@@ -239,7 +251,7 @@ if __name__ == "__main__":
                 env=env,
             )
         except subprocess.TimeoutExpired:
-            return {
+            res = {
                 "syntax_ok": syntax_ok,
                 "timeout": True,
                 "success": False,
@@ -253,6 +265,8 @@ if __name__ == "__main__":
                 "exit_code": None,
                 "test_results": [],
             }
+            _cache_set_result(cache_key, res)
+            return res
 
     stdout = (proc.stdout or "").strip()
     stderr = (proc.stderr or "").strip()
@@ -280,6 +294,7 @@ if __name__ == "__main__":
             "exit_code": proc.returncode,
         }
     )
+    _cache_set_result(cache_key, res)
     return res
 
 
@@ -604,3 +619,32 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
         return rewards
 
     return reward_wrapper
+def _make_test_cache_key(impl_code: str, test_code: str, timeout_val: float) -> str:
+    h = hashlib.sha256()
+    h.update(str(TEST_TIMEOUT).encode("utf-8"))
+    h.update(b"\0")
+    h.update(str(MAX_TIMEOUTS).encode("utf-8"))
+    h.update(b"\0")
+    h.update(str(timeout_val).encode("utf-8"))
+    h.update(b"\0")
+    h.update((impl_code or "").encode("utf-8", errors="ignore"))
+    h.update(b"\0")
+    h.update((test_code or "").encode("utf-8", errors="ignore"))
+    return h.hexdigest()
+
+
+def _cache_get_result(key: str) -> Dict[str, Any] | None:
+    cached = _TEST_CACHE.get(key)
+    if cached is None:
+        return None
+    _TEST_CACHE.move_to_end(key)
+    return copy.deepcopy(cached)
+
+
+def _cache_set_result(key: str, value: Dict[str, Any]) -> None:
+    if TEST_CACHE_MAX <= 0:
+        return
+    _TEST_CACHE[key] = copy.deepcopy(value)
+    _TEST_CACHE.move_to_end(key)
+    if len(_TEST_CACHE) > TEST_CACHE_MAX:
+        _TEST_CACHE.popitem(last=False)
