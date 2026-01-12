@@ -42,7 +42,7 @@ magrpo:
   num_agents: 2
   discount: 0.9
   termination_threshold: -0.2
-  logging_steps: 5
+  logging_steps: 1
   save_steps: 200
   normalize_advantage: false
   epsilon_clip: null
