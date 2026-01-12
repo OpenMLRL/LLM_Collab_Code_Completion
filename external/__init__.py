@@ -19,6 +19,7 @@ Usage:
       'assignments': dict[int, list[str]]  # optional: agent_idx -> assigned methods
     }
 - Call get_external_transition(...) to produce next‑turn prompts per agent.
+  Supported modes: code_feedback, plain.
 """
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -26,6 +27,7 @@ import builtins
 
 # Mode implementations live alongside this file
 from . import code_feedback
+from . import plain
 
 # Verbose toggle for external previews
 VERBOSE = True
@@ -78,7 +80,7 @@ def get_external_transition(
         prompt: The original per‑agent prompt string (used to resolve context).
         agent_completions: Best completions from previous turn, one per agent.
         num_agents: Number of collaborating agents.
-        mode: Only 'code_feedback' is supported in this build.
+    mode: 'code_feedback' or 'plain'.
 
     Returns:
         A list (or tuple) of strings, one per agent.
@@ -113,26 +115,45 @@ def get_external_transition(
         response_history_per_agent = [[] for _ in range(n)]
 
     mode_key = (mode or "").lower()
-    if mode_key and mode_key != "code_feedback":
-        raise NotImplementedError(
-            f"External transition mode '{mode}' is not supported. Use 'code_feedback'."
+    if mode_key == "code_feedback":
+        prompts = code_feedback.format_followup_prompts(
+            skeleton=skeleton,
+            class_name=class_name,
+            method_names=method_names,
+            assignments=assignments,
+            agent_completions=list(agent_completions),
+            test_code=test_code,
+            num_agents=n,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
         )
+        print("\n" + "=" * 60)
+        print("EXTERNAL MODE PREVIEW: code_feedback")
+        for i, p in enumerate(prompts):
+            print("-" * 60)
+            print(f"AGENT {i} PROMPT:\n{p}")
+        print("=" * 60 + "\n")
+        return prompts
 
-    prompts = code_feedback.format_followup_prompts(
-        skeleton=skeleton,
-        class_name=class_name,
-        method_names=method_names,
-        assignments=assignments,
-        agent_completions=list(agent_completions),
-        test_code=test_code,
-        num_agents=n,
-        prompt_history_per_agent=prompt_history_per_agent,
-        response_history_per_agent=response_history_per_agent,
+    if mode_key == "plain":
+        prompts = plain.format_followup_prompts(
+            skeleton=skeleton,
+            class_name=class_name,
+            method_names=method_names,
+            assignments=assignments,
+            agent_completions=list(agent_completions),
+            num_agents=n,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
+        )
+        print("\n" + "=" * 60)
+        print("EXTERNAL MODE PREVIEW: plain")
+        for i, p in enumerate(prompts):
+            print("-" * 60)
+            print(f"AGENT {i} PROMPT:\n{p}")
+        print("=" * 60 + "\n")
+        return prompts
+
+    raise NotImplementedError(
+        f"External transition mode '{mode}' is not supported. Use 'code_feedback' or 'plain'."
     )
-    print("\n" + "=" * 60)
-    print("EXTERNAL MODE PREVIEW: code_feedback")
-    for i, p in enumerate(prompts):
-        print("-" * 60)
-        print(f"AGENT {i} PROMPT:\n{p}")
-    print("=" * 60 + "\n")
-    return prompts
