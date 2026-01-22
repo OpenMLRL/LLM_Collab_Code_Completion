@@ -24,6 +24,8 @@ output:
 
 external:
   mode: code_feedback
+  original_prompt: true
+  previous_response: true
 
 magrpo:
   num_turns: 2

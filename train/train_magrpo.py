@@ -190,6 +190,9 @@ def main():
     if not isinstance(magrpo_cfg, dict):
         magrpo_cfg = {}
         cfg["magrpo"] = magrpo_cfg
+    if not isinstance(external_cfg, dict):
+        external_cfg = {}
+        cfg["external"] = external_cfg
     try:
         import secrets
         seed = int(secrets.randbits(32))
@@ -491,6 +494,8 @@ def main():
         external_set_context_resolver(_resolver)
 
         external_mode = str(external_cfg.get("mode", "code_feedback"))
+        original_prompt_flag = bool(external_cfg.get("original_prompt", True))
+        previous_response_flag = bool(external_cfg.get("previous_response", True))
 
         def external_transition_wrapper(
             prompt,
@@ -509,6 +514,8 @@ def main():
                 mode=external_mode,
                 prompt_history_per_agent=prompt_history_per_agent,
                 response_history_per_agent=response_history_per_agent,
+                original_prompt=original_prompt_flag,
+                previous_response=previous_response_flag,
             )
 
         trainer_kwargs["external_transition"] = external_transition_wrapper

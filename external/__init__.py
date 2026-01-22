@@ -115,6 +115,8 @@ def get_external_transition(
         response_history_per_agent = [[] for _ in range(n)]
 
     mode_key = (mode or "").lower()
+    original_prompt_flag = bool(kwargs.get("original_prompt", True))
+    previous_response_flag = bool(kwargs.get("previous_response", True))
     if mode_key == "code_feedback":
         prompts = code_feedback.format_followup_prompts(
             skeleton=skeleton,
@@ -126,6 +128,8 @@ def get_external_transition(
             num_agents=n,
             prompt_history_per_agent=prompt_history_per_agent,
             response_history_per_agent=response_history_per_agent,
+            original_prompt_flag=original_prompt_flag,
+            previous_response_flag=previous_response_flag,
         )
         print("\n" + "=" * 60)
         print("EXTERNAL MODE PREVIEW: code_feedback")
@@ -145,6 +149,8 @@ def get_external_transition(
             num_agents=n,
             prompt_history_per_agent=prompt_history_per_agent,
             response_history_per_agent=response_history_per_agent,
+            original_prompt_flag=original_prompt_flag,
+            previous_response_flag=previous_response_flag,
         )
         print("\n" + "=" * 60)
         print("EXTERNAL MODE PREVIEW: plain")

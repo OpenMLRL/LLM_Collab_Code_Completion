@@ -96,6 +96,8 @@ def format_followup_prompts(
     *,
     prompt_history_per_agent: Optional[List[List[str]]] = None,
     response_history_per_agent: Optional[List[List[str]]] = None,
+    original_prompt_flag: bool = True,
+    previous_response_flag: bool = True,
 ) -> List[str]:
     """Revision prompt with history + syntax/test summary (no assignment hints)."""
     n = int(num_agents)
@@ -134,6 +136,8 @@ def format_followup_prompts(
             idx,
             prompt_history_per_agent=prompt_history_per_agent,
             response_history_per_agent=response_history_per_agent,
+            include_original_prompt=original_prompt_flag,
+            include_previous_response=previous_response_flag,
         )
         if hist:
             sections.extend([hist, ""])

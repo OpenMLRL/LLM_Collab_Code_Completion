@@ -83,6 +83,8 @@ def render_history_block_for_agent(
     *,
     prompt_history_per_agent: Optional[List[List[str]]] = None,
     response_history_per_agent: Optional[List[List[str]]] = None,
+    include_original_prompt: bool = True,
+    include_previous_response: bool = True,
 ) -> str:
     """Render a readable history block for one agent.
 
@@ -94,11 +96,16 @@ def render_history_block_for_agent(
     if prompt_history_per_agent and 0 <= agent_idx < len(prompt_history_per_agent):
         ph = prompt_history_per_agent[agent_idx] or []
         if ph:
-            lines.append("History: previous prompts:")
+            prompt_lines: List[str] = []
             for t, p in enumerate(ph, start=1):
-                lines.append(f"- Turn {t} prompt:\n{p}")
-            lines.append("")
-    if response_history_per_agent and 0 <= agent_idx < len(response_history_per_agent):
+                if t == 1 and not include_original_prompt:
+                    continue
+                prompt_lines.append(f"- Turn {t} prompt:\n{p}")
+            if prompt_lines:
+                lines.append("History: previous prompts:")
+                lines.extend(prompt_lines)
+                lines.append("")
+    if include_previous_response and response_history_per_agent and 0 <= agent_idx < len(response_history_per_agent):
         rh = response_history_per_agent[agent_idx] or []
         if rh:
             lines.append("History: your previous responses:")
