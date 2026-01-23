@@ -27,6 +27,10 @@ external:
   original_prompt: true
   previous_response: true
 
+patches:
+  generation_memory: true
+  single_agent_returns: true
+
 maac:
   num_turns: 2
   critic_type: v

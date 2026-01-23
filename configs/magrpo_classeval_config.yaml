@@ -27,6 +27,10 @@ external:
   original_prompt: true
   previous_response: true
 
+patches:
+  generation_memory: true
+  single_agent_returns: true
+
 magrpo:
   num_turns: 2
   num_train_epochs: 13
