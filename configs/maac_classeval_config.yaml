@@ -1,5 +1,5 @@
 model:
-  name: Qwen/Qwen2.5-Coder-7B
+  name: Qwen/Qwen3-4B-Instruct-2507
   type: qwen
   temperature: 0.6
   top_p: 0.6
@@ -46,7 +46,7 @@ maac:
   discount: 0.9
   early_termination_threshold: -0.2
   eval_interval: 10
-  eval_num_samples: 4
+  eval_num_samples: 2
   logging_steps: 1
 
 reward_processor:
