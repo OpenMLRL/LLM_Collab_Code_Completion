@@ -27,6 +27,12 @@ def format_followup_prompts(
         prompt_history_per_agent = [[] for _ in range(n)]
     if response_history_per_agent is None:
         response_history_per_agent = [[] for _ in range(n)]
+    has_assignments = bool(assignments and any(assignments.values()))
+
+    def _allowed_methods_for_agent(agent_idx: int) -> List[str]:
+        if has_assignments:
+            return list((assignments or {}).get(agent_idx, []))
+        return list(method_names or [])
 
     skeleton_block = textwrap.dedent(
         f"""
@@ -48,6 +54,7 @@ def format_followup_prompts(
             response_history_per_agent=response_history_per_agent,
             include_original_prompt=original_prompt_flag,
             include_previous_response=previous_response_flag,
+            allowed_methods=_allowed_methods_for_agent(idx),
         )
         if hist:
             sections.extend([hist, ""])
