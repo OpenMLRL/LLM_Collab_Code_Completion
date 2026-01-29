@@ -28,8 +28,9 @@ conda install -c conda-forge comlrl
   `dataset.train_split` and `dataset.eval_split` (e.g., `test[:50]` and `test[50:]`).
 - **Subsetting**: if a split name is missing (e.g., ClassEval only has `test`),
   the loader falls back to the first available split before slicing.
-- **Prompting**: prompts include the sanitized class skeleton, explicit method names per
-  agent, and any collaboration instructions.
+- **Prompting**: prompts include the sanitized class skeleton plus per-agent method
+  assignments. The default strategy assigns 1-parameter methods to agent 0 and all other
+  methods to agent 1.
 - **Testing**: reward code merges agent completions back into the skeleton and runs the
   provided unit tests inside a temporary directory to isolate state.
 
@@ -41,25 +42,21 @@ Key sections in `configs/magrpo_classeval_config.yaml`:
   kwargs, and device mapping.
 - `dataset`: dataset name and split strings (`train_split`, `eval_split`) for
   ClassEval sub-slices or local mirrors.
-- `external`: determines the feedback mode. `token_report` summarizes syntax/tests at each
-  turn; other modes replicate the options documented in the code-generation README
-  (`plain`, `level_feedback`, `group_feedback`, `personal_feedback`, `personal_detailed_feedback`,
-  `passed`, `level_passed`).
+- `external`: feedback configuration (use `code_feedback` for syntax/test diagnostics).
 - `magrpo`: forwarded to `comlrl.trainers.magrpo.MAGRPOTrainer`. Includes collaboration
-  (`num_agents`, TAKE_JOB self-select), sampling settings (`num_generations`, `num_turns`,
+  (`num_agents`, param-count assignment), sampling settings (`num_generations`, `num_turns`,
   temperature/top_p), rollout buffering (`rollout_buffer_size`), optimization
   hyperparameters, and IO controls.
-- `output`: persistence knobs (save final model, keep tmp dirs); environment variables such
-  as `CLASSEVAL_TMP_BASE` are derived from this section to colocate temp files per job.
+- `reward_processor`: optional post-processing for rewards (scale, shift).
+- `output`: persistence knobs (save final model, output paths, verbose debug prints).
 
 ## Rewards, Logging, and Evaluation
 
 - `rewards/CE_reward.py` computes structured rewards:
-  - `lv1`: coverage of unique methods completed.
-  - `lv2`: penalizes under/over-allocation of total method picks.
-  - `lv3`: balance term encouraging an even workload across agents.
-  - `lv4`/`lv5`: syntax + unit-test bonuses (reported for analysis; syntax/test failures
-    short-circuit the run where applicable).
+  - `lv1`: syntax score proportional to valid method outputs (range [0, 2]).
+  - `lv2`: unit-test bonus based on pass rate (passed/total), scaled to [0, 4].
+  - `lv3`: overlap penalty normalized by total methods (range [-1, 0]).
+  - reward shift: optional post-processing shift via `reward_processor.shift`.
 - Tests execute inside per-sample temporary directories to avoid polluted state and are
   automatically truncated on timeout.
 - Loggers are inherited from CoMLRL. Enable Weights & Biases by filling `wandb.entity`

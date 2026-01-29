@@ -7,9 +7,10 @@ from typing import Any, Dict, List
 from LLM_Collab_Code_Completion.utils.data import (
     extract_incomplete_methods,
     extract_class_name,
+    extract_method_param_counts,
     _sanitize_python_source,
 )
-from LLM_Collab_Code_Completion.utils.prompting import build_take_job_prompt
+from LLM_Collab_Code_Completion.utils.prompting import build_agent_prompt
 
 
 class CollaborationStrategy:
@@ -26,39 +27,57 @@ class CollaborationStrategy:
         raise NotImplementedError
 
 
-class TakeJobStrategy(CollaborationStrategy):
-    """No allocator: each agent is prompted to self-select a subset of methods.
+class ParamCountStrategy(CollaborationStrategy):
+    """Assign methods by parameter count: 1-param -> agent 0, others -> agent 1.
 
-    The `partition` here is intentionally a no-op mapping (empty), as assignment
-    is left to agents via prompt. Downstream code must handle self-select by
-    parsing agent outputs and should not rely on this partition for filtering.
+    Additional agents (if any) receive no assignments.
     """
 
     def __init__(self, num_agents: int, seed: int) -> None:
         super().__init__(num_agents=num_agents, seed=seed)
-        self.self_select = True
+        self.self_select = False
 
     def partition(self, example: Dict[str, Any]) -> Dict[str, int]:
-        return {}
+        skeleton = _sanitize_python_source(str(example.get("skeleton", "")))
+        if not skeleton:
+            return {}
+        methods = extract_incomplete_methods(skeleton)
+        if not methods:
+            return {}
+        counts = extract_method_param_counts(skeleton)
+        partition: Dict[str, int] = {}
+        for name in methods:
+            if self.num_agents <= 1:
+                partition[name] = 0
+                continue
+            param_count = counts.get(name, -1)
+            if param_count == 1:
+                partition[name] = 0
+            else:
+                partition[name] = 1
+        return partition
 
 
 def get_strategy(num_agents: int, seed: int) -> CollaborationStrategy:
-    return TakeJobStrategy(num_agents=num_agents, seed=seed)
+    return ParamCountStrategy(num_agents=num_agents, seed=seed)
 
 
 def build_agent_formatters(strategy: CollaborationStrategy) -> List:
-    """Return per-agent prompt formatters for TAKE_JOB self-selection."""
+    """Return per-agent prompt formatters based on the strategy partition."""
     def make_fmt(agent_idx: int):
         def _fmt(example: Dict[str, Any]) -> str:
             skeleton = example.get("skeleton", "")
             skeleton = _sanitize_python_source(skeleton)
             class_name = example.get("class_name") or extract_class_name(skeleton) or ""
-            methods = extract_incomplete_methods(skeleton)
-            return build_take_job_prompt(
+            try:
+                partition = strategy.partition(example) or {}
+            except Exception:
+                partition = {}
+            assigned = [m for m, a in partition.items() if int(a) == int(agent_idx)]
+            return build_agent_prompt(
                 skeleton=skeleton,
                 class_name=class_name,
-                method_names=methods,
-                num_agents=strategy.num_agents,
+                assigned_methods=assigned,
             )
 
         return _fmt

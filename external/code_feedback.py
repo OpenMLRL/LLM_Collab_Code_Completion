@@ -9,24 +9,7 @@ from LLM_Collab_Code_Completion.utils.merge import (
     build_method_map_with_syntax_selection,
     merge_methods_into_skeleton,
 )
-from LLM_Collab_Code_Completion.utils.text_tools import (
-    count_new_tokens,
-    get_effective_max_new_tokens,
-)
-
-
-def _first_turn_response(
-    agent_idx: int,
-    response_history_per_agent: Optional[List[List[str]]],
-    fallback: str,
-) -> str:
-    if (
-        response_history_per_agent
-        and 0 <= agent_idx < len(response_history_per_agent)
-        and response_history_per_agent[agent_idx]
-    ):
-        return response_history_per_agent[agent_idx][0] or ""
-    return fallback or ""
+from .common import render_history_block_for_agent
 
 
 def _build_combined_code(
@@ -64,6 +47,44 @@ def _build_combined_code(
         return skeleton or ""
 
 
+def _format_test_summary(run_res: Dict[str, object]) -> List[str]:
+    syntax_ok = bool(run_res.get("syntax_ok", False))
+    timeout = bool(run_res.get("timeout", False))
+    tests_run = int(run_res.get("testsRun") or 0)
+    passed_cnt = int(run_res.get("passed") or 0)
+    details = run_res.get("test_results") or []
+    failed_ids: List[str] = []
+    if isinstance(details, list):
+        for item in details:
+            try:
+                outcome = str(item.get("outcome", ""))
+                case_id = str(item.get("id", ""))
+            except Exception:
+                continue
+            if outcome != "passed" and case_id:
+                failed_ids.append(case_id)
+    lines = [
+        "Diagnostics:",
+        f"- Syntax: {'OK' if syntax_ok else 'ERROR'}",
+    ]
+    if timeout:
+        lines.append("- Test runner timed out before completion.")
+    if syntax_ok and tests_run > 0:
+        lines.append(f"- Hidden tests passed: {passed_cnt}/{tests_run}")
+    elif tests_run == 0:
+        lines.append("- Hidden tests not available or not executed.")
+    else:
+        lines.append("- Hidden tests skipped due to syntax failure.")
+
+    if failed_ids:
+        preview = ", ".join(failed_ids[:5])
+        more = len(failed_ids) - 5
+        suffix = f" (+{more} more)" if more > 0 else ""
+        lines.append(f"- Failing cases: {preview}{suffix}")
+    lines.append("")
+    return lines
+
+
 def format_followup_prompts(
     skeleton: str,
     class_name: str,
@@ -71,14 +92,14 @@ def format_followup_prompts(
     assignments: Dict[int, List[str]] | None,
     agent_completions: List[str],
     test_code: str,
-    original_prompt_flag: bool = True,
-    previous_response_flag: bool = True,  # kept for parity with other modes
     num_agents: int = 2,
     *,
-    prompt_history_per_agent: Optional[List[List[str]]] = None,  # unused here
+    prompt_history_per_agent: Optional[List[List[str]]] = None,
     response_history_per_agent: Optional[List[List[str]]] = None,
+    original_prompt_flag: bool = True,
+    previous_response_flag: bool = True,
 ) -> List[str]:
-    """Plain-simple revision prompt plus basic processed-output feedback."""
+    """Revision prompt with history + syntax/test summary (no assignment hints)."""
     n = int(num_agents)
     prompts: List[str] = [""] * n
 
@@ -90,13 +111,18 @@ def format_followup_prompts(
         agent_completions,
     )
     run_res = run_unittests_with_details(combined_code, test_code)
-    syntax_ok = bool(run_res.get("syntax_ok", False))
+    test_summary = _format_test_summary(run_res)
 
-    try:
-        limit_raw = int(get_effective_max_new_tokens())
-    except Exception:
-        limit_raw = 512
-    limit_ref = max(1, limit_raw - 1)
+    if prompt_history_per_agent is None:
+        prompt_history_per_agent = [[] for _ in range(n)]
+    if response_history_per_agent is None:
+        response_history_per_agent = [[] for _ in range(n)]
+    has_assignments = bool(assignments and any(assignments.values()))
+
+    def _allowed_methods_for_agent(agent_idx: int) -> List[str]:
+        if has_assignments:
+            return list((assignments or {}).get(agent_idx, []))
+        return list(method_names or [])
 
     skeleton_block = textwrap.dedent(
         f"""
@@ -108,51 +134,24 @@ def format_followup_prompts(
     ).strip()
 
     for idx in range(n):
-        previous_code = _first_turn_response(
-            idx,
-            response_history_per_agent,
-            agent_completions[idx] if idx < len(agent_completions) else "",
-        )
-        if not (previous_code or "").strip():
-            previous_code = "<no turn-1 code captured>"
-
         sections: List[str] = []
         sections.append(
-            "Modify the turn-1 code below. Keep every method signature unchanged and produce only the improved implementation."
+            "Review the history and diagnostics below. Keep every method signature unchanged and produce only the improved implementation."
         )
-        if original_prompt_flag:
-            sections.extend([skeleton_block, ""])
-
-        try:
-            used_tokens = count_new_tokens(
-                agent_completions[idx] if idx < len(agent_completions) else ""
-            )
-        except Exception:
-            used_tokens = len(
-                (agent_completions[idx] or "").split()
-            ) if idx < len(agent_completions) else 0
-        reached_limit = used_tokens >= limit_ref
-
-        sections.extend(
-            [
-                "Processed output status:",
-                f"- Syntax: {'OK' if syntax_ok else 'ERROR'}",
-                f"- New tokens used: {used_tokens}/{limit_ref} (max)",
-                f"- Reached max new token limit: {'Yes' if reached_limit else 'No'}",
-                "",
-            ]
+        hist = render_history_block_for_agent(
+            idx,
+            prompt_history_per_agent=prompt_history_per_agent,
+            response_history_per_agent=response_history_per_agent,
+            include_original_prompt=original_prompt_flag,
+            include_previous_response=previous_response_flag,
+            allowed_methods=_allowed_methods_for_agent(idx),
         )
+        if hist:
+            sections.extend([hist, ""])
 
-        if previous_response_flag:
-            sections.extend(
-                [
-                    "Your turn-1 code:",
-                    "```python",
-                    previous_code.strip(),
-                    "```",
-                    "",
-                ]
-            )
+        sections.extend([skeleton_block, ""])
+
+        sections.extend(test_summary)
 
         sections.extend(
             [

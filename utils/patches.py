@@ -5,7 +5,9 @@ Runtime patches to adapt CoMLRL MAGRPOTrainer behavior for memory efficiency and
 single-agent (GRPO) compatibility without modifying external libraries.
 
 Functions:
-- patch_trainer_generation_for_memory(): reduce VRAM usage during generation.
+- patch_trainer_generation_for_memory(): reduce VRAM usage during generation (MAGRPO).
+- patch_maac_generation_for_memory(): reduce VRAM usage during MAAC generation.
+- patch_iac_generation_for_memory(): reduce VRAM usage during IAC generation.
 - patch_single_agent_returns(): provide GRPO flow when num_agents==1 and num_turns==1.
 - apply_default_patches(cfg=None): apply both by default; can be gated by cfg['patches'].
 """
@@ -13,6 +15,28 @@ Functions:
 from typing import Any, Dict
 
 from comlrl.trainers.magrpo import MAGRPOTrainer  # type: ignore
+
+
+def _run_with_generation_patches(actor_model, fn):
+    """Run a callable with a temporary generate() wrapper to reduce VRAM."""
+    try:
+        orig_generate = actor_model.generate
+    except Exception:
+        return fn()
+
+    def generate_wrapper(*args, **kwargs):
+        kwargs.setdefault("output_scores", False)
+        kwargs.setdefault("use_cache", False)
+        return orig_generate(*args, **kwargs)
+
+    try:
+        actor_model.generate = generate_wrapper
+        return fn()
+    finally:
+        try:
+            actor_model.generate = orig_generate
+        except Exception:
+            pass
 
 
 def patch_trainer_generation_for_memory() -> None:
@@ -62,6 +86,56 @@ def patch_trainer_generation_for_memory() -> None:
 
     try:
         MAGRPOTrainer._generate_completions = wrapped  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
+def patch_maac_generation_for_memory() -> None:
+    """Monkey-patch MAACTrainer._generate to lower VRAM during rollout."""
+    try:
+        from comlrl.trainers.maac import MAACTrainer  # type: ignore
+        orig = MAACTrainer._generate  # type: ignore[attr-defined]
+    except Exception:
+        return
+
+    def wrapped(self, actor_model, prompt):
+        try:
+            import torch as _torch  # local import to avoid hard dependency at import time
+            with _torch.no_grad():
+                return _run_with_generation_patches(
+                    actor_model,
+                    lambda: orig(self, actor_model, prompt),
+                )
+        except Exception:
+            return orig(self, actor_model, prompt)
+
+    try:
+        MAACTrainer._generate = wrapped  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
+def patch_iac_generation_for_memory() -> None:
+    """Monkey-patch IACTrainer._generate_rollout to lower VRAM during rollout."""
+    try:
+        from comlrl.trainers.iac import IACTrainer  # type: ignore
+        orig = IACTrainer._generate_rollout  # type: ignore[attr-defined]
+    except Exception:
+        return
+
+    def wrapped(self, actor_model, prompt, agent_idx, num_ret):
+        try:
+            import torch as _torch  # local import to avoid hard dependency at import time
+            with _torch.no_grad():
+                return _run_with_generation_patches(
+                    actor_model,
+                    lambda: orig(self, actor_model, prompt, agent_idx, num_ret),
+                )
+        except Exception:
+            return orig(self, actor_model, prompt, agent_idx, num_ret)
+
+    try:
+        IACTrainer._generate_rollout = wrapped  # type: ignore[attr-defined]
     except Exception:
         pass
 
@@ -140,5 +214,7 @@ def apply_default_patches(cfg: Dict[str, Any] | None = None) -> None:
 
     if gates.get("generation_memory", True):
         patch_trainer_generation_for_memory()
+        patch_maac_generation_for_memory()
+        patch_iac_generation_for_memory()
     if gates.get("single_agent_returns", True):
         patch_single_agent_returns()
