@@ -33,9 +33,7 @@ from . import plain
 VERBOSE = True
 
 
-# -----------------------------
 # Context resolver API
-# -----------------------------
 _context_resolver: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None
 
 

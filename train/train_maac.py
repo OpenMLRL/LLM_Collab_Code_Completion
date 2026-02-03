@@ -533,7 +533,7 @@ def main() -> int:
             num_turns_val = int(getattr(maac_args, "num_turns", 1))
         except Exception:
             num_turns_val = 1
-        default_name = "codecompletion_classeval_maac"
+        default_name = f"{dataset_type}-maac"
         run_name = (
             wandb_cfg.get("name")
             or wandb_cfg.get("run_name")

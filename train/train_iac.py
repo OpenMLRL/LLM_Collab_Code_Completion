@@ -532,7 +532,7 @@ def main() -> int:
             num_turns_val = int(getattr(iac_args, "num_turns", 1))
         except Exception:
             num_turns_val = 1
-        default_name = "codecompletion_classeval_iac"
+        default_name = f"{dataset_type}-iac"
         run_name = (
             wandb_cfg.get("name")
             or wandb_cfg.get("run_name")
