@@ -125,10 +125,7 @@ class RewardLogger:
         def _get(d: Mapping[str, float], *keys: str) -> float:
             for k in keys:
                 if k in d and d[k] is not None:
-                    try:
-                        return float(d[k])
-                    except Exception:
-                        pass
+                    return float(d[k])
             return 0.0
 
         RewardLogger.log_ce_levels(

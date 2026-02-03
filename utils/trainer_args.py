@@ -90,32 +90,39 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
 
     candidate = {
         "output_dir": output_dir_resolved,
+        "num_turns": _as_int(tr.get("num_turns", 1), 1),
         "num_train_epochs": _as_int(tr.get("num_train_epochs", 3), 3),
-        "per_device_train_batch_size": _as_int(tr.get("per_device_train_batch_size", 1), 1),
         "learning_rate": _as_float(lr_val, 3e-5),
         "logging_steps": _as_int(tr.get("logging_steps", 50), 50),
         "save_steps": _as_int(tr.get("save_steps", 200), 200),
-        "eval_interval": _as_int(tr.get("eval_interval", 16), 16),
-        "eval_num_samples": _as_int(tr.get("eval_num_samples", 4), 4),
         "num_generations": _as_int(tr.get("num_generations", 4), 4),
         "max_new_tokens": _as_int(tr.get("max_new_tokens", 512), 512),
         "temperature": _as_float(tr.get("temperature", 0.2), 0.2),
         "top_p": _as_float(tr.get("top_p", 0.95), 0.95),
-        "num_turns": _as_int(tr.get("num_turns", 1), 1),
-        "discount": _as_float(tr.get("discount", 0.9), 0.9),
-        "joint_mode": str(tr.get("joint_mode", "aligned")),
-        "num_agents": _as_int(tr.get("num_agents", 1), 1),
-        "external_prompt_passthrough": True,
-        "normalize_advantage": bool(tr.get("normalize_advantage", False)),
-        "epsilon_clip": _as_opt_float(tr.get("epsilon_clip", None), None),
     }
-    rb_size = _as_opt_int(tr.get("rollout_buffer_size", None), None)
-    if rb_size is not None:
-        candidate["rollout_buffer_size"] = rb_size
     if "top_k" in tr:
         candidate["top_k"] = _as_opt_int(tr.get("top_k", None), None)
+    candidate.update(
+        {
+            "num_agents": _as_int(tr.get("num_agents", 1), 1),
+            "discount": _as_float(tr.get("discount", 0.9), 0.9),
+            "joint_mode": str(tr.get("joint_mode", "aligned")),
+        }
+    )
     if "termination_threshold" in tr:
-        candidate["termination_threshold"] = _as_opt_float(tr.get("termination_threshold", None), None)
+        candidate["termination_threshold"] = _as_opt_float(
+            tr.get("termination_threshold", None), None
+        )
+    candidate.update(
+        {
+            "rollout_buffer_size": _as_int(tr.get("rollout_buffer_size", 2), 2),
+            "eval_interval": _as_int(tr.get("eval_interval", 16), 16),
+            "eval_num_samples": _as_int(tr.get("eval_num_samples", 4), 4),
+            "external_prompt_passthrough": True,
+            "normalize_advantage": bool(tr.get("normalize_advantage", False)),
+            "epsilon_clip": _as_opt_float(tr.get("epsilon_clip", None), None),
+        }
+    )
 
     try:
         params = set(inspect.signature(MAGRPOConfig.__init__).parameters.keys())
@@ -129,10 +136,6 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
     cfg_obj = MAGRPOConfig(**filtered)
 
     # Ensure learning_rate is accessible on the config object even if not in __init__
-    try:
-        if not hasattr(cfg_obj, "learning_rate"):
-            setattr(cfg_obj, "learning_rate", _as_float(lr_val, 3e-5))
-    except Exception:
-        pass
-
+    if not hasattr(cfg_obj, "learning_rate"):
+        setattr(cfg_obj, "learning_rate", _as_float(lr_val, 3e-5))
     return cfg_obj

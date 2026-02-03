@@ -147,16 +147,13 @@ def merge_methods_into_skeleton(skeleton: str, class_name: str, method_to_code: 
     if not merged.endswith("\n"):
         merged = merged + "\n"
     # Apply lenient normalization/formatting if available
-    try:
-        if normalize_code_for_syntax is not None:
-            formatted = normalize_code_for_syntax(merged, use_autopep8=True)  # type: ignore
-            if isinstance(formatted, str) and formatted:
-                # Preserve trailing newline
-                if not formatted.endswith("\n"):
-                    formatted = formatted + "\n"
-                return formatted
-    except Exception:
-        pass
+    if normalize_code_for_syntax is not None:
+        formatted = normalize_code_for_syntax(merged, use_autopep8=True)  # type: ignore
+        if isinstance(formatted, str) and formatted:
+            # Preserve trailing newline
+            if not formatted.endswith("\n"):
+                formatted = formatted + "\n"
+            return formatted
     return merged
 
 

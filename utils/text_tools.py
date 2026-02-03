@@ -42,21 +42,18 @@ def _fast_scan_kv(path: str, key: str) -> Optional[str]:
 
     Returns the stripped value if found.
     """
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            for raw in fh:
-                line = raw.strip()
-                if not line or line.startswith("#"):
+    with open(path, "r", encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith(key) and ":" in line:
+                try:
+                    val = line.split(":", 1)[1]
+                    val = val.split("#", 1)[0].strip()
+                    return val
+                except Exception:
                     continue
-                if line.startswith(key) and ":" in line:
-                    try:
-                        val = line.split(":", 1)[1]
-                        val = val.split("#", 1)[0].strip()
-                        return val
-                    except Exception:
-                        continue
-    except Exception:
-        pass
     return None
 
 
@@ -72,38 +69,30 @@ def read_default_model_from_config() -> Optional[str]:
     data = _read_yaml_safely(cfg)
     name: Optional[str] = None
     if isinstance(data, dict):
-        try:
-            model = data.get("model") or {}
-            name = model.get("name") if isinstance(model, dict) else None
-            if isinstance(name, str) and name.strip():
-                _CACHE["model_name"] = name.strip()
-                return _CACHE["model_name"]
-        except Exception:
-            pass
-
-    # Fallback fast scan within model: block
-    try:
-        with open(cfg, "r", encoding="utf-8") as fh:
-            in_model = False
-            for raw in fh:
-                line = raw.rstrip("\n")
-                if not in_model:
-                    if line.strip().startswith("model:"):
-                        in_model = True
+        model = data.get("model") or {}
+        name = model.get("name") if isinstance(model, dict) else None
+        if isinstance(name, str) and name.strip():
+            _CACHE["model_name"] = name.strip()
+            return _CACHE["model_name"]
+    with open(cfg, "r", encoding="utf-8") as fh:
+        in_model = False
+        for raw in fh:
+            line = raw.rstrip("\n")
+            if not in_model:
+                if line.strip().startswith("model:"):
+                    in_model = True
+                continue
+            # End of model block when next top-level key appears
+            if line and not line.startswith(" ") and not line.startswith("\t"):
+                break
+            if "name:" in line:
+                try:
+                    val = line.split(":", 1)[1].split("#", 1)[0].strip()
+                    if val:
+                        _CACHE["model_name"] = val
+                        return val
+                except Exception:
                     continue
-                # End of model block when next top-level key appears
-                if line and not line.startswith(" ") and not line.startswith("\t"):
-                    break
-                if "name:" in line:
-                    try:
-                        val = line.split(":", 1)[1].split("#", 1)[0].strip()
-                        if val:
-                            _CACHE["model_name"] = val
-                            return val
-                    except Exception:
-                        continue
-    except Exception:
-        pass
     return None
 
 
@@ -117,36 +106,24 @@ def get_effective_max_new_tokens(default: int = 512) -> int:
         return int(_CACHE["max_new_tokens"])
 
     # Env override
-    try:
-        env_val = os.environ.get("CLASSEVAL_MAX_NEW_TOKENS")
-        if env_val is not None:
-            v = int(env_val)
-            _CACHE["max_new_tokens"] = v
-            return v
-    except Exception:
-        pass
-
+    env_val = os.environ.get("CLASSEVAL_MAX_NEW_TOKENS")
+    if env_val is not None:
+        v = int(env_val)
+        _CACHE["max_new_tokens"] = v
+        return v
     cfg = _repo_config_path()
     data = _read_yaml_safely(cfg)
     if isinstance(data, dict):
-        try:
-            magrpo = data.get("magrpo") or {}
-            v = magrpo.get("max_new_tokens") if isinstance(magrpo, dict) else None
-            if isinstance(v, int):
-                _CACHE["max_new_tokens"] = v
-                return v
-        except Exception:
-            pass
-
-    scanned = _fast_scan_kv(cfg, "max_new_tokens")
-    if scanned is not None:
-        try:
-            v = int(scanned)
+        magrpo = data.get("magrpo") or {}
+        v = magrpo.get("max_new_tokens") if isinstance(magrpo, dict) else None
+        if isinstance(v, int):
             _CACHE["max_new_tokens"] = v
             return v
-        except Exception:
-            pass
-
+    scanned = _fast_scan_kv(cfg, "max_new_tokens")
+    if scanned is not None:
+        v = int(scanned)
+        _CACHE["max_new_tokens"] = v
+        return v
     _CACHE["max_new_tokens"] = int(default)
     return int(default)
 
@@ -164,19 +141,14 @@ class TokenizerAdapter:
 
 def _load_tokenizer_impl(model_name: str) -> TokenizerAdapter:
     # Prefer `tokenizers`
-    try:
-        from tokenizers import Tokenizer  # type: ignore
-        t = Tokenizer.from_pretrained(model_name)
+    from tokenizers import Tokenizer  # type: ignore
+    t = Tokenizer.from_pretrained(model_name)
 
-        def enc_ids(s: str, add_special: bool) -> List[int]:
-            enc = t.encode(s, add_special_tokens=add_special)
-            return enc.ids
+    def enc_ids(s: str, add_special: bool) -> List[int]:
+        enc = t.encode(s, add_special_tokens=add_special)
+        return enc.ids
 
-        return TokenizerAdapter(enc_ids, name=f"tokenizers::{model_name}")
-    except Exception:
-        pass
-
-    # Fallback to transformers
+    return TokenizerAdapter(enc_ids, name=f"tokenizers::{model_name}")
     try:
         from transformers import AutoTokenizer  # type: ignore
 
@@ -193,12 +165,8 @@ def _load_tokenizer_impl(model_name: str) -> TokenizerAdapter:
             return list(ids)
 
         # Ensure pad token exists (not strictly needed for counting)
-        try:
-            if getattr(tok, "pad_token", None) is None and getattr(tok, "eos_token", None) is not None:
-                tok.pad_token = tok.eos_token  # type: ignore[attr-defined]
-        except Exception:
-            pass
-
+        if getattr(tok, "pad_token", None) is None and getattr(tok, "eos_token", None) is not None:
+            tok.pad_token = tok.eos_token  # type: ignore[attr-defined]
         return TokenizerAdapter(enc_ids_tf, name=f"transformers::{model_name}")
     except Exception as e:
         raise RuntimeError(f"Failed to load tokenizer '{model_name}': {e}")
@@ -237,11 +205,7 @@ def count_new_tokens(text: str, add_special_tokens: bool = False) -> int:
         return 0
     tok = get_cached_tokenizer()
     if tok is not None:
-        try:
-            return len(tok.encode_ids(text, add_special_tokens))
-        except Exception:
-            pass
-    # Heuristic for code-like text: ~4 chars per token
+        return len(tok.encode_ids(text, add_special_tokens))
     try:
         return max(1, int(len(text) / 4))
     except Exception:
