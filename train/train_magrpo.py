@@ -228,11 +228,9 @@ def main():
     except Exception:
         train_ds = train_ds.map(lambda _: {"phase": "train"})
         eval_ds = eval_ds.map(lambda _: {"phase": "eval"})
-    output_dir_cfg = magrpo_cfg.get("output_dir") or output_cfg.get(
-        "base_dir", os.path.join(os.getcwd(), "output")
+    output_dir = str(
+        output_cfg.get("base_dir", os.path.join(os.getcwd(), "output"))
     )
-    output_dir = str(output_dir_cfg)
-    magrpo_cfg["output_dir"] = output_dir
     os.makedirs(output_dir, exist_ok=True)
     tmp_base = None
     try:
@@ -311,7 +309,11 @@ def main():
         except Exception:
             num_turns_val = 1
         default_name = "codecompletion_classeval_magrpo"
-        run_name = wandb_cfg.get("name", default_name)
+        run_name = (
+            wandb_cfg.get("name")
+            or wandb_cfg.get("run_name")
+            or default_name
+        )
         tags = wandb_cfg.get(
             "tags",
             ["magrpo", dataset_type, f"agents_{num_agents}", f"turns_{num_turns_val}"],
@@ -492,7 +494,7 @@ def main():
         if save_path_cfg:
             save_path = str(save_path_cfg)
         else:
-            save_path = os.path.join(os.path.abspath(magrpo_args.output_dir), "final_model")
+            save_path = os.path.join(os.path.abspath(output_dir), "final_model")
 
         trainer.save_model(save_path)
         print(f"Model saved to: {save_path}")
