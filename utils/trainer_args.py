@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 import inspect
 
-from comlrl.trainers.magrpo import MAGRPOConfig  # type: ignore
+from comlrl.trainers.reinforce import MAGRPOConfig  # type: ignore
 
 
 def _as_int(x: Any, default: int) -> int:

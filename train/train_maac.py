@@ -26,7 +26,7 @@ from datasets import load_dataset  # type: ignore
 from transformers import AutoTokenizer  # type: ignore
 import torch  # type: ignore
 
-from comlrl.trainers.maac import MAACConfig, MAACTrainer  # type: ignore
+from comlrl.trainers.actor_critic import MAACConfig, MAACTrainer  # type: ignore
 from comlrl.utils.reward_processor import RewardProcessors  # type: ignore
 
 from LLM_Collab_Code_Completion.utils.patches import apply_default_patches

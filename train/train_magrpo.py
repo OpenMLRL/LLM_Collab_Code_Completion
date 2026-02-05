@@ -23,7 +23,7 @@ from datasets import load_dataset  # type: ignore
 from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
 import torch  # type: ignore
 
-from comlrl.trainers.magrpo import MAGRPOTrainer  # type: ignore
+from comlrl.trainers.reinforce import MAGRPOTrainer  # type: ignore
 from LLM_Collab_Code_Completion.utils.patches import apply_default_patches
 from LLM_Collab_Code_Completion.utils.trainer_args import get_trainer_args
 
