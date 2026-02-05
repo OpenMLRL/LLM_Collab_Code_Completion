@@ -43,7 +43,7 @@ Key sections in `configs/magrpo_classeval_config.yaml`:
 - `dataset`: dataset name and split strings (`train_split`, `eval_split`) for
   ClassEval sub-slices or local mirrors.
 - `external`: feedback configuration (use `code_feedback` for syntax/test diagnostics).
-- `magrpo`: forwarded to `comlrl.trainers.magrpo.MAGRPOTrainer`. Includes collaboration
+- `magrpo`: forwarded to `comlrl.trainers.reinforce.MAGRPOTrainer`. Includes collaboration
   (`num_agents`, param-count assignment), sampling settings (`num_generations`, `num_turns`,
   temperature/top_p), rollout buffering (`rollout_buffer_size`), optimization
   hyperparameters, and IO controls.

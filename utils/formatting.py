@@ -19,28 +19,15 @@ def normalize_code_for_syntax(text: str, use_autopep8: bool = True) -> str:
     - Optionally run autopep8 (aggressive=1) if available
     """
     s = text or ""
-    try:
-        s = s.replace("\r\n", "\n").replace("\r", "\n")
-    except Exception:
-        pass
-    try:
-        s = s.expandtabs(4)
-    except Exception:
-        pass
-    try:
-        lines = [ln.rstrip() for ln in s.splitlines()]
-        s = "\n".join(lines)
-    except Exception:
-        pass
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    s = s.expandtabs(4)
+    lines = [ln.rstrip() for ln in s.splitlines()]
+    s = "\n".join(lines)
     if use_autopep8:
-        try:
-            import autopep8  # type: ignore
+        import autopep8  # type: ignore
 
-            s2 = autopep8.fix_code(s, options={"aggressive": 1})
-            if isinstance(s2, str) and s2:
-                s = s2
-        except Exception:
-            # autopep8 not installed or failed — ignore
-            pass
+        s2 = autopep8.fix_code(s, options={"aggressive": 1})
+        if isinstance(s2, str) and s2:
+            s = s2
     return s
 

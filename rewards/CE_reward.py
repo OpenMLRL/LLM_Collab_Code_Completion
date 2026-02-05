@@ -218,15 +218,8 @@ if __name__ == "__main__":
     # across concurrent processes while keeping per-call isolation.
     base_tmp = os.environ.get("CLASSEVAL_TMP_BASE", tempfile.gettempdir())
     tmp_parent = base_tmp
-    try:
-        tmp_parent = os.path.abspath(tmp_parent)
-    except Exception:
-        pass
-    try:
-        os.makedirs(tmp_parent, exist_ok=True)
-    except Exception:
-        pass
-
+    tmp_parent = os.path.abspath(tmp_parent)
+    os.makedirs(tmp_parent, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=tmp_parent) as tmpdir:
         # Normalize tmpdir and pass relative payload to runner
         try:
@@ -316,18 +309,13 @@ def _docstring_line_indices(text: str) -> Set[int]:
     if tokenization fails.
     """
     doc_lines: Set[int] = set()
-    try:
-        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
-            if tok.type == tokenize.STRING and _is_triple_quoted_string_literal(tok.string):
-                start_line = tok.start[0]
-                end_line = tok.end[0]
-                for ln in range(start_line, end_line + 1):
-                    doc_lines.add(ln)
-        return doc_lines
-    except Exception:
-        # Fallback: naive scanning for """ or ''' blocks
-        pass
-
+    for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+        if tok.type == tokenize.STRING and _is_triple_quoted_string_literal(tok.string):
+            start_line = tok.start[0]
+            end_line = tok.end[0]
+            for ln in range(start_line, end_line + 1):
+                doc_lines.add(ln)
+    return doc_lines
     lines = text.splitlines()
     in_triple = False
     delim = None
@@ -475,11 +463,7 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
 
         for i in range(batch_size):
             example = {}
-            try:
-                example = batch_items[i] if batch_items is not None else {}
-            except Exception:
-                pass
-
+            example = batch_items[i] if batch_items is not None else {}
             skeleton: str = example.get("skeleton", "")
             test_code: str = example.get("test", "")
             class_name = extract_class_name(skeleton) or ""
@@ -568,50 +552,43 @@ def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]
                 print("=" * 50)
                 print(lv1, lv2, lv3)
             if is_eval:
-                try:
-                    _EVAL_LV1.append(float(lv1))
-                    _EVAL_LV2.append(float(lv2))
-                    _EVAL_LV3.append(float(lv3))
-                    _EVAL_TOTAL.append(float(total))
-                    should_log = False
-                    if EVAL_LOG_EVERY is None or EVAL_LOG_EVERY <= 0:
-                        should_log = True
-                    elif len(_EVAL_LV1) >= int(EVAL_LOG_EVERY):
-                        should_log = True
-                    if should_log:
-                        def _mean(xs: List[float]) -> float:
-                            return float(sum(xs) / len(xs)) if xs else 0.0
-                        RewardLogger.log(
-                            {
-                                "eval/ce_reward/level1_syntax": _mean(_EVAL_LV1),
-                                "eval/ce_reward/level2_tests": _mean(_EVAL_LV2),
-                                "eval/ce_reward/level3_overlap_penalty": _mean(_EVAL_LV3),
-                                "eval/ce_reward/total": _mean(_EVAL_TOTAL),
-                            },
-                            step=None,
-                            commit=False,
-                        )
-                        reset_eval_log_state()
-                except Exception:
-                    pass
-
+                _EVAL_LV1.append(float(lv1))
+                _EVAL_LV2.append(float(lv2))
+                _EVAL_LV3.append(float(lv3))
+                _EVAL_TOTAL.append(float(total))
+                should_log = False
+                if EVAL_LOG_EVERY is None or EVAL_LOG_EVERY <= 0:
+                    should_log = True
+                elif len(_EVAL_LV1) >= int(EVAL_LOG_EVERY):
+                    should_log = True
+                if should_log:
+                    def _mean(xs: List[float]) -> float:
+                        return float(sum(xs) / len(xs)) if xs else 0.0
+                    RewardLogger.log(
+                        {
+                            "eval/ce_reward/level1_syntax": _mean(_EVAL_LV1),
+                            "eval/ce_reward/level2_tests": _mean(_EVAL_LV2),
+                            "eval/ce_reward/level3_overlap_penalty": _mean(_EVAL_LV3),
+                            "eval/ce_reward/total": _mean(_EVAL_TOTAL),
+                        },
+                        step=None,
+                        commit=False,
+                    )
+                    reset_eval_log_state()
             if VERBOSE and is_eval:
                 # Preview generations: print each agent's code and number of functions parsed
-                try:
-                    preview_limit = 5000
-                    task_id = example.get("task_id")
-                    header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
-                    print(header, flush=True)
-                    print(f"total funcs: {total_methods}")
-                    for aidx, text in enumerate(agent_texts):
-                        funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
-                        snippet = (text or "")[:preview_limit]
-                        if text and len(text) > preview_limit:
-                            snippet += "..."
-                        print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
-                        print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
-                except Exception:
-                    pass
+                preview_limit = 5000
+                task_id = example.get("task_id")
+                header = f"[gen] class={class_name or 'unknown'} task_id={str(task_id) if task_id is not None else 'N/A'}"
+                print(header, flush=True)
+                print(f"total funcs: {total_methods}")
+                for aidx, text in enumerate(agent_texts):
+                    funcs_cnt = len(A_sets[aidx]) if aidx < len(A_sets) else 0
+                    snippet = (text or "")[:preview_limit]
+                    if text and len(text) > preview_limit:
+                        snippet += "..."
+                    print(f"[agent_{aidx}] funcs={funcs_cnt}", flush=True)
+                    print(f"[agent_{aidx}] code:\n{snippet}", flush=True)
                 print("=" * 50)
 
             rewards.append(total)

@@ -23,7 +23,7 @@ from datasets import load_dataset  # type: ignore
 from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
 import torch  # type: ignore
 
-from comlrl.trainers.magrpo import MAGRPOTrainer  # type: ignore
+from comlrl.trainers.reinforce import MAGRPOTrainer  # type: ignore
 from LLM_Collab_Code_Completion.utils.patches import apply_default_patches
 from LLM_Collab_Code_Completion.utils.trainer_args import get_trainer_args
 
@@ -79,12 +79,8 @@ def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
 
         keys = key.split(".")
 
-        try:
-            import ast
-            value = ast.literal_eval(value)
-        except Exception:
-            pass
-
+        import ast
+        value = ast.literal_eval(value)
         current = result
         for k in keys[:-1]:
             if k not in current or not isinstance(current[k], dict):
@@ -93,76 +89,6 @@ def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
         current[keys[-1]] = value
 
     return result
-
-
-def _preferred_split_key(ds_all: Any) -> Optional[str]:
-    try:
-        keys = list(ds_all.keys())  # type: ignore[attr-defined]
-    except Exception:
-        return None
-    for k in ("train", "validation", "val", "test"):
-        if k in ds_all:
-            return k
-    return keys[0] if keys else None
-
-
-def _manual_slice_dataset(ds: Any, split_expr: Optional[str]) -> Any:
-    if not split_expr or "[" not in split_expr or "]" not in split_expr:
-        return ds
-    try:
-        m = re.search(r"\[\s*(?P<start>-?\d*)\s*:\s*(?P<end>-?\d*)\s*\]", split_expr)
-        if not m:
-            return ds
-        start_raw = m.group("start")
-        end_raw = m.group("end")
-        start = int(start_raw) if start_raw not in (None, "", "+") else None
-        end = int(end_raw) if end_raw not in (None, "", "+") else None
-        n = len(ds)
-        s_idx = start if start is not None else 0
-        e_idx = end if end is not None else n
-        if s_idx < 0:
-            s_idx = max(0, n + s_idx)
-        if e_idx < 0:
-            e_idx = max(0, n + e_idx)
-        e_idx = min(max(s_idx, e_idx), n)
-        return ds.select(range(s_idx, e_idx))
-    except Exception:
-        return ds
-
-
-def _load_dataset_with_optional_split(dataset_name: str, dataset_split: Optional[str]):
-    if dataset_split:
-        try:
-            return load_dataset(dataset_name, split=dataset_split)
-        except Exception:
-            try:
-                ds_all = load_dataset(dataset_name)
-            except Exception as e:
-                raise e
-            base_split = str(dataset_split).split("[", 1)[0].split(":", 1)[0].strip()
-            base_ds = ds_all
-            try:
-                if base_split and hasattr(ds_all, "keys") and base_split in ds_all:  # type: ignore[attr-defined]
-                    base_ds = ds_all[base_split]
-                else:
-                    preferred = _preferred_split_key(ds_all)
-                    if preferred is not None:
-                        base_ds = ds_all[preferred]
-            except Exception:
-                pass
-            sliced = _manual_slice_dataset(base_ds, dataset_split)
-            print(
-                f"[data] Loaded {dataset_name} via fallback split={dataset_split}; using {len(sliced)} examples"
-            )
-            return sliced
-    ds_all = load_dataset(dataset_name)
-    try:
-        preferred = _preferred_split_key(ds_all)
-        if preferred is not None and hasattr(ds_all, "keys"):  # type: ignore[attr-defined]
-            return ds_all[preferred]
-    except Exception:
-        pass
-    return ds_all
 
 
 def main():
@@ -215,11 +141,11 @@ def main():
     num_agents = int(magrpo_cfg.get("num_agents", 1))
 
     if not eval_split:
-        print("dataset.eval_split is required when using slice-based loading.")
+        print("dataset.eval_split is required.")
         return
     try:
-        train_ds = _load_dataset_with_optional_split(dataset_name, train_split)
-        eval_ds = _load_dataset_with_optional_split(dataset_name, eval_split)
+        train_ds = load_dataset(dataset_name, split=train_split)
+        eval_ds = load_dataset(dataset_name, split=eval_split)
     except Exception as e:
         print(
             f"Failed to load dataset name={dataset_name} train_split={train_split} eval_split={eval_split}: {e}"
@@ -236,22 +162,12 @@ def main():
             with_indices=True,
         )
     except Exception:
-        try:
-            train_ds = train_ds.map(lambda _: {"phase": "train"})
-            eval_ds = eval_ds.map(lambda _: {"phase": "eval"})
-        except Exception:
-            pass
-
-    output_dir_cfg = magrpo_cfg.get("output_dir") or output_cfg.get(
-        "base_dir", os.path.join(os.getcwd(), "output")
+        train_ds = train_ds.map(lambda _: {"phase": "train"})
+        eval_ds = eval_ds.map(lambda _: {"phase": "eval"})
+    output_dir = str(
+        output_cfg.get("base_dir", os.path.join(os.getcwd(), "output"))
     )
-    output_dir = str(output_dir_cfg)
-    magrpo_cfg["output_dir"] = output_dir
-    try:
-        os.makedirs(output_dir, exist_ok=True)
-    except Exception:
-        pass
-
+    os.makedirs(output_dir, exist_ok=True)
     tmp_base = None
     try:
         tmp_base = output_cfg.get("tmp_base_dir")
@@ -306,16 +222,10 @@ def main():
     agents = []
     for idx in range(num_agents):
         agent = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
-        try:
-            if hasattr(agent, "config"):
-                agent.config.use_cache = False
-        except Exception:
-            pass
+        if hasattr(agent, "config"):
+            agent.config.use_cache = False
         if bool(model_cfg.get("gradient_checkpointing", True)):
-            try:
-                agent.gradient_checkpointing_enable()
-            except Exception:
-                pass
+            agent.gradient_checkpointing_enable()
         agents.append(agent)
 
     strategy = get_strategy(num_agents=num_agents, seed=seed)
@@ -334,8 +244,12 @@ def main():
             num_turns_val = int(getattr(magrpo_args, "num_turns", 1))
         except Exception:
             num_turns_val = 1
-        default_name = "codecompletion_classeval_magrpo"
-        run_name = wandb_cfg.get("name", default_name)
+        default_name = f"{dataset_type}-magrpo"
+        run_name = (
+            wandb_cfg.get("name")
+            or wandb_cfg.get("run_name")
+            or default_name
+        )
         tags = wandb_cfg.get(
             "tags",
             ["magrpo", dataset_type, f"agents_{num_agents}", f"turns_{num_turns_val}"],
@@ -359,10 +273,7 @@ def main():
         if wandb_config.get("dir"):
             os.environ.setdefault("WANDB_DIR", str(wandb_config["dir"]))
 
-    try:
-        ce_reward.VERBOSE = output_verbose
-    except Exception:
-        pass
+    ce_reward.VERBOSE = output_verbose
     try:
         num_turns_val = int(getattr(magrpo_args, "num_turns", 1) or 1)
     except Exception:
@@ -375,20 +286,13 @@ def main():
         eval_len = len(eval_ds) if eval_ds is not None else 0
     except Exception:
         eval_len = 0
-    try:
-        if eval_samples > 0:
-            eval_count = min(eval_samples, eval_len) if eval_len > 0 else eval_samples
-            ce_reward.EVAL_LOG_EVERY = int(eval_count) * max(1, num_turns_val)
-        else:
-            ce_reward.EVAL_LOG_EVERY = None
-        ce_reward.reset_eval_log_state()
-    except Exception:
-        pass
-    try:
-        external_mod.VERBOSE = output_verbose
-    except Exception:
-        pass
-
+    if eval_samples > 0:
+        eval_count = min(eval_samples, eval_len) if eval_len > 0 else eval_samples
+        ce_reward.EVAL_LOG_EVERY = int(eval_count) * max(1, num_turns_val)
+    else:
+        ce_reward.EVAL_LOG_EVERY = None
+    ce_reward.reset_eval_log_state()
+    external_mod.VERBOSE = output_verbose
     reward_processor = None
     reward_proc_cfg = cfg.get("reward_processor", {}) or {}
     if reward_proc_cfg.get("enabled", True):
@@ -434,57 +338,53 @@ def main():
         context_map: Dict[str, Any] = {}
 
         def _register_split(ds, split_name: str):
-            try:
-                for idx in range(len(ds)):
-                    item = ds[idx]
-                    skeleton = str(item.get("skeleton", ""))
-                    test_code = str(item.get("test", ""))
-                    class_name = extract_class_name(skeleton) or ""
-                    method_names = extract_incomplete_methods(skeleton)
-                    example = {
-                        "skeleton": skeleton,
-                        "class_name": class_name,
-                        "task_id": f"{split_name}:{idx}",
-                    }
+            for idx in range(len(ds)):
+                item = ds[idx]
+                skeleton = str(item.get("skeleton", ""))
+                test_code = str(item.get("test", ""))
+                class_name = extract_class_name(skeleton) or ""
+                method_names = extract_incomplete_methods(skeleton)
+                example = {
+                    "skeleton": skeleton,
+                    "class_name": class_name,
+                    "task_id": f"{split_name}:{idx}",
+                }
+                try:
+                    part = strategy.partition(example)
+                except Exception:
+                    part = {}
+                assignments: Dict[int, List[str]] = {i: [] for i in range(num_agents)}
+                if part:
+                    for m, aid in part.items():
+                        if 0 <= int(aid) < num_agents:
+                            assignments[int(aid)].append(m)
+
+                prompts_for_agents: List[str] = []
+                for aidx, fmt in enumerate(formatters):
                     try:
-                        part = strategy.partition(example)
+                        p = fmt(example)
                     except Exception:
-                        part = {}
-                    assignments: Dict[int, List[str]] = {i: [] for i in range(num_agents)}
-                    if part:
-                        for m, aid in part.items():
-                            if 0 <= int(aid) < num_agents:
-                                assignments[int(aid)].append(m)
+                        p = build_agent_prompt(
+                            skeleton=skeleton,
+                            class_name=class_name,
+                            assigned_methods=assignments.get(aidx, []),
+                        )
+                    prompts_for_agents.append(p)
 
-                    prompts_for_agents: List[str] = []
-                    for aidx, fmt in enumerate(formatters):
-                        try:
-                            p = fmt(example)
-                        except Exception:
-                            p = build_agent_prompt(
-                                skeleton=skeleton,
-                                class_name=class_name,
-                                assigned_methods=assignments.get(aidx, []),
-                            )
-                        prompts_for_agents.append(p)
-
-                    payload = {
-                        "skeleton": skeleton,
-                        "class_name": class_name,
-                        "tests_eval": test_code,
-                        "tests_sandbox": test_code,
-                        "method_names": method_names,
-                        "assignments": assignments,
-                    }
-                    ds_key = _normalize_key(str(item.get("prompt", f"classeval:{split_name}:{idx}")))
-                    if ds_key:
-                        context_map[ds_key] = payload
-                    for p in prompts_for_agents:
-                        key = _normalize_key(p)
-                        context_map[key] = payload
-            except Exception:
-                pass
-
+                payload = {
+                    "skeleton": skeleton,
+                    "class_name": class_name,
+                    "tests_eval": test_code,
+                    "tests_sandbox": test_code,
+                    "method_names": method_names,
+                    "assignments": assignments,
+                }
+                ds_key = _normalize_key(str(item.get("prompt", f"classeval:{split_name}:{idx}")))
+                if ds_key:
+                    context_map[ds_key] = payload
+                for p in prompts_for_agents:
+                    key = _normalize_key(p)
+                    context_map[key] = payload
         _register_split(train_ds, "train")
         _register_split(eval_ds, "eval")
 
@@ -521,6 +421,7 @@ def main():
         trainer_kwargs["external_transition"] = external_transition_wrapper
 
     trainer = MAGRPOTrainer(**trainer_kwargs)
+    trainer.verbose = bool(output_verbose)
     trainer.train()
 
     out_cfg = cfg.get("output", {})
@@ -529,7 +430,7 @@ def main():
         if save_path_cfg:
             save_path = str(save_path_cfg)
         else:
-            save_path = os.path.join(os.path.abspath(magrpo_args.output_dir), "final_model")
+            save_path = os.path.join(os.path.abspath(output_dir), "final_model")
 
         trainer.save_model(save_path)
         print(f"Model saved to: {save_path}")

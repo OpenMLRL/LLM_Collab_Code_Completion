@@ -26,7 +26,7 @@ from datasets import load_dataset  # type: ignore
 from transformers import AutoTokenizer  # type: ignore
 import torch  # type: ignore
 
-from comlrl.trainers.iac import IACConfig, IACTrainer  # type: ignore
+from comlrl.trainers.actor_critic import IACConfig, IACTrainer  # type: ignore
 from comlrl.utils.reward_processor import RewardProcessors  # type: ignore
 
 from LLM_Collab_Code_Completion.utils.patches import apply_default_patches
@@ -79,13 +79,9 @@ def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
 
         keys = key.split(".")
 
-        try:
-            import ast
+        import ast
 
-            value = ast.literal_eval(value)
-        except Exception:
-            pass
-
+        value = ast.literal_eval(value)
         current = result
         for k in keys[:-1]:
             if k not in current or not isinstance(current[k], dict):
@@ -94,76 +90,6 @@ def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
         current[keys[-1]] = value
 
     return result
-
-
-def _preferred_split_key(ds_all: Any) -> Optional[str]:
-    try:
-        keys = list(ds_all.keys())  # type: ignore[attr-defined]
-    except Exception:
-        return None
-    for k in ("train", "validation", "val", "test"):
-        if k in ds_all:
-            return k
-    return keys[0] if keys else None
-
-
-def _manual_slice_dataset(ds: Any, split_expr: Optional[str]) -> Any:
-    if not split_expr or "[" not in split_expr or "]" not in split_expr:
-        return ds
-    try:
-        m = re.search(r"\[\s*(?P<start>-?\d*)\s*:\s*(?P<end>-?\d*)\s*\]", split_expr)
-        if not m:
-            return ds
-        start_raw = m.group("start")
-        end_raw = m.group("end")
-        start = int(start_raw) if start_raw not in (None, "", "+") else None
-        end = int(end_raw) if end_raw not in (None, "", "+") else None
-        n = len(ds)
-        s_idx = start if start is not None else 0
-        e_idx = end if end is not None else n
-        if s_idx < 0:
-            s_idx = max(0, n + s_idx)
-        if e_idx < 0:
-            e_idx = max(0, n + e_idx)
-        e_idx = min(max(s_idx, e_idx), n)
-        return ds.select(range(s_idx, e_idx))
-    except Exception:
-        return ds
-
-
-def _load_dataset_with_optional_split(dataset_name: str, dataset_split: Optional[str]):
-    if dataset_split:
-        try:
-            return load_dataset(dataset_name, split=dataset_split)
-        except Exception:
-            try:
-                ds_all = load_dataset(dataset_name)
-            except Exception as e:
-                raise e
-            base_split = str(dataset_split).split("[", 1)[0].split(":", 1)[0].strip()
-            base_ds = ds_all
-            try:
-                if base_split and hasattr(ds_all, "keys") and base_split in ds_all:  # type: ignore[attr-defined]
-                    base_ds = ds_all[base_split]
-                else:
-                    preferred = _preferred_split_key(ds_all)
-                    if preferred is not None:
-                        base_ds = ds_all[preferred]
-            except Exception:
-                pass
-            sliced = _manual_slice_dataset(base_ds, dataset_split)
-            print(
-                f"[data] Loaded {dataset_name} via fallback split={dataset_split}; using {len(sliced)} examples"
-            )
-            return sliced
-    ds_all = load_dataset(dataset_name)
-    try:
-        preferred = _preferred_split_key(ds_all)
-        if preferred is not None and hasattr(ds_all, "keys"):  # type: ignore[attr-defined]
-            return ds_all[preferred]
-    except Exception:
-        pass
-    return ds_all
 
 
 def _as_int(x: Any, default: int) -> int:
@@ -271,11 +197,6 @@ def _build_iac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> IACCon
     tr = cfg.get("iac") or {}
     if not isinstance(tr, dict):
         tr = {}
-    output_cfg = cfg.get("output", {}) or {}
-
-    output_dir_cfg = tr.get("output_dir", output_cfg.get("base_dir", os.path.join(os.getcwd(), "output")))
-    output_dir_resolved = str(output_dir_cfg)
-
     use_separate_critic = _as_bool(tr.get("use_separate_critic", True), True)
     critic_model = tr.get("critic_model") or tr.get("critic_model_name_or_path") or model_name
     if use_separate_critic and critic_model is None:
@@ -284,40 +205,42 @@ def _build_iac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> IACCon
     adv_norm = tr.get("advantage_normalization", tr.get("normalize_advantage", True))
 
     candidate = {
-        "output_dir": output_dir_resolved,
+        "num_turns": _as_int(tr.get("num_turns", 1), 1),
+        "num_train_epochs": _as_int(tr.get("num_train_epochs", 40), 40),
         "actor_learning_rate": _as_float(tr.get("actor_learning_rate", 5e-6), 5e-6),
-        "critic_learning_rate": _as_opt_float(tr.get("critic_learning_rate", 5e-6), 5e-6),
+        "critic_learning_rate": _as_opt_float(
+            tr.get("critic_learning_rate", 5e-6), 5e-6
+        ),
         "weight_decay": _as_float(tr.get("weight_decay", 0.0), 0.0),
         "adam_beta1": _as_float(tr.get("adam_beta1", 0.9), 0.9),
         "adam_beta2": _as_float(tr.get("adam_beta2", 0.999), 0.999),
         "adam_epsilon": _as_float(tr.get("adam_epsilon", 1e-8), 1e-8),
         "max_grad_norm": _as_float(tr.get("max_grad_norm", 0.5), 0.5),
         "rollout_buffer_size": _as_int(tr.get("rollout_buffer_size", 8), 8),
-        "value_clip_range": _as_opt_float(tr.get("value_clip_range", 0.2), 0.2),
         "value_loss_coef": _as_float(tr.get("value_loss_coef", 0.6), 0.6),
-        "entropy_coef": _as_float(tr.get("entropy_coef", 0.0), 0.0),
+        "value_clip_range": _as_opt_float(tr.get("value_clip_range", 0.2), 0.2),
         "advantage_normalization": _as_bool(adv_norm, True),
         "max_new_tokens": _as_int(tr.get("max_new_tokens", 256), 256),
         "temperature": _as_float(tr.get("temperature", 0.6), 0.6),
         "top_p": _as_float(tr.get("top_p", 0.6), 0.6),
         "top_k": _as_opt_int(tr.get("top_k", None), None),
         "do_sample": _as_bool(tr.get("do_sample", True), True),
-        "num_train_epochs": _as_int(tr.get("num_train_epochs", 40), 40),
-        "per_device_train_batch_size": _as_int(tr.get("per_device_train_batch_size", 1), 1),
+        "num_agents": _as_int(tr.get("num_agents", 2), 2),
+        "num_generations": _as_int(tr.get("num_generations", 1), 1),
         "use_separate_critic": use_separate_critic,
         "critic_model_name_or_path": critic_model if use_separate_critic else None,
-        "critic_value_head_hidden_dim": _as_opt_int(tr.get("critic_value_head_hidden_dim", None), None),
+        "critic_value_head_hidden_dim": _as_opt_int(
+            tr.get("critic_value_head_hidden_dim", None), None
+        ),
         "value_head_hidden_dim": _as_opt_int(tr.get("value_head_hidden_dim", None), None),
-        "num_agents": _as_int(tr.get("num_agents", 2), 2),
-        "num_turns": _as_int(tr.get("num_turns", 1), 1),
         "discount": _as_float(tr.get("discount", 0.9), 0.9),
-        "num_return_sequences": _as_int(tr.get("num_return_sequences", 1), 1),
-        "eval_interval": _as_int(tr.get("eval_interval", 16), 16),
-        "eval_num_samples": _as_int(tr.get("eval_num_samples", 4), 4),
         "early_termination_threshold": _as_opt_float(
             tr.get("early_termination_threshold", tr.get("termination_threshold", None)),
             None,
         ),
+        "eval_interval": _as_int(tr.get("eval_interval", 16), 16),
+        "eval_num_samples": _as_int(tr.get("eval_num_samples", 4), 4),
+        "eval_batch_size": _as_int(tr.get("eval_batch_size", 1), 1),
         "logging_steps": _as_int(tr.get("logging_steps", 1), 1),
         "pad_token_id": _as_opt_int(tr.get("pad_token_id", None), None),
     }
@@ -375,8 +298,8 @@ def main() -> int:
         eval_split = eval_split.strip() or None
 
     try:
-        train_ds = _load_dataset_with_optional_split(dataset_name, train_split)
-        eval_ds = _load_dataset_with_optional_split(dataset_name, eval_split) if eval_split else None
+        train_ds = load_dataset(dataset_name, split=train_split)
+        eval_ds = load_dataset(dataset_name, split=eval_split) if eval_split else None
     except Exception as e:
         print(
             f"Failed to load dataset name={dataset_name} train_split={train_split} eval_split={eval_split}: {e}"
@@ -394,23 +317,13 @@ def main() -> int:
                 with_indices=True,
             )
     except Exception:
-        try:
-            train_ds = train_ds.map(lambda _: {"phase": "train"})
-            if eval_ds is not None:
-                eval_ds = eval_ds.map(lambda _: {"phase": "eval"})
-        except Exception:
-            pass
-
-    output_dir_cfg = iac_cfg.get("output_dir") or output_cfg.get(
-        "base_dir", os.path.join(os.getcwd(), "output")
+        train_ds = train_ds.map(lambda _: {"phase": "train"})
+        if eval_ds is not None:
+            eval_ds = eval_ds.map(lambda _: {"phase": "eval"})
+    output_dir = str(
+        output_cfg.get("base_dir", os.path.join(os.getcwd(), "output"))
     )
-    output_dir = str(output_dir_cfg)
-    iac_cfg["output_dir"] = output_dir
-    try:
-        os.makedirs(output_dir, exist_ok=True)
-    except Exception:
-        pass
-
+    os.makedirs(output_dir, exist_ok=True)
     tmp_base = None
     try:
         tmp_base = output_cfg.get("tmp_base_dir")
@@ -463,62 +376,58 @@ def main() -> int:
     def _register_dataset_prompts(ds, split_name: str) -> None:
         if ds is None:
             return
-        try:
-            for idx in range(len(ds)):
-                item = ds[idx]
-                skeleton = str(item.get("skeleton", ""))
-                test_code = str(item.get("test", ""))
-                class_name = extract_class_name(skeleton) or ""
-                method_names = extract_incomplete_methods(skeleton)
-                example = {
-                    "skeleton": skeleton,
-                    "class_name": class_name,
-                    "task_id": f"{split_name}:{idx}",
-                }
+        for idx in range(len(ds)):
+            item = ds[idx]
+            skeleton = str(item.get("skeleton", ""))
+            test_code = str(item.get("test", ""))
+            class_name = extract_class_name(skeleton) or ""
+            method_names = extract_incomplete_methods(skeleton)
+            example = {
+                "skeleton": skeleton,
+                "class_name": class_name,
+                "task_id": f"{split_name}:{idx}",
+            }
+            try:
+                part = strategy.partition(example)
+            except Exception:
+                part = {}
+            assignments: Dict[int, List[str]] = {i: [] for i in range(num_agents)}
+            if part:
+                for m, aid in part.items():
+                    if 0 <= int(aid) < num_agents:
+                        assignments[int(aid)].append(m)
+
+            prompts_for_agents: List[str] = []
+            for aidx, fmt in enumerate(formatters):
                 try:
-                    part = strategy.partition(example)
+                    p = fmt(example)
                 except Exception:
-                    part = {}
-                assignments: Dict[int, List[str]] = {i: [] for i in range(num_agents)}
-                if part:
-                    for m, aid in part.items():
-                        if 0 <= int(aid) < num_agents:
-                            assignments[int(aid)].append(m)
+                    p = build_agent_prompt(
+                        skeleton=skeleton,
+                        class_name=class_name,
+                        assigned_methods=assignments.get(aidx, []),
+                    )
+                prompts_for_agents.append(p)
+                if p:
+                    _register_prompt(p, item)
 
-                prompts_for_agents: List[str] = []
-                for aidx, fmt in enumerate(formatters):
-                    try:
-                        p = fmt(example)
-                    except Exception:
-                        p = build_agent_prompt(
-                            skeleton=skeleton,
-                            class_name=class_name,
-                            assigned_methods=assignments.get(aidx, []),
-                        )
-                    prompts_for_agents.append(p)
-                    if p:
-                        _register_prompt(p, item)
-
-                payload = {
-                    "skeleton": skeleton,
-                    "class_name": class_name,
-                    "tests_eval": test_code,
-                    "tests_sandbox": test_code,
-                    "method_names": method_names,
-                    "assignments": assignments,
-                }
-                ds_key = _normalize_key(str(item.get("prompt", f"classeval:{split_name}:{idx}")))
-                if ds_key:
-                    dataset_prompt_map[ds_key] = dict(item)
-                if ds_key:
-                    _register_prompt(ds_key, item)
-                for p in prompts_for_agents:
-                    key = _normalize_key(p)
-                    if key:
-                        dataset_prompt_map[key] = dict(item)
-        except Exception:
-            pass
-
+            payload = {
+                "skeleton": skeleton,
+                "class_name": class_name,
+                "tests_eval": test_code,
+                "tests_sandbox": test_code,
+                "method_names": method_names,
+                "assignments": assignments,
+            }
+            ds_key = _normalize_key(str(item.get("prompt", f"classeval:{split_name}:{idx}")))
+            if ds_key:
+                dataset_prompt_map[ds_key] = dict(item)
+            if ds_key:
+                _register_prompt(ds_key, item)
+            for p in prompts_for_agents:
+                key = _normalize_key(p)
+                if key:
+                    dataset_prompt_map[key] = dict(item)
     _register_dataset_prompts(train_ds, "train")
     _register_dataset_prompts(eval_ds, "eval")
 
@@ -559,8 +468,12 @@ def main() -> int:
             num_turns_val = int(getattr(iac_args, "num_turns", 1))
         except Exception:
             num_turns_val = 1
-        default_name = "codecompletion_classeval_iac"
-        run_name = wandb_cfg.get("name", default_name)
+        default_name = f"{dataset_type}-iac"
+        run_name = (
+            wandb_cfg.get("name")
+            or wandb_cfg.get("run_name")
+            or default_name
+        )
         tags = wandb_cfg.get(
             "tags",
             ["iac", dataset_type, f"agents_{num_agents}", f"turns_{num_turns_val}"],
@@ -584,10 +497,7 @@ def main() -> int:
         if wandb_config.get("dir"):
             os.environ.setdefault("WANDB_DIR", str(wandb_config["dir"]))
 
-    try:
-        ce_reward.VERBOSE = output_verbose
-    except Exception:
-        pass
+    ce_reward.VERBOSE = output_verbose
     try:
         num_turns_val = int(getattr(iac_args, "num_turns", 1) or 1)
     except Exception:
@@ -600,20 +510,13 @@ def main() -> int:
         eval_len = len(eval_ds) if eval_ds is not None else 0
     except Exception:
         eval_len = 0
-    try:
-        if eval_samples > 0:
-            eval_count = min(eval_samples, eval_len) if eval_len > 0 else eval_samples
-            ce_reward.EVAL_LOG_EVERY = int(eval_count) * max(1, num_turns_val)
-        else:
-            ce_reward.EVAL_LOG_EVERY = None
-        ce_reward.reset_eval_log_state()
-    except Exception:
-        pass
-    try:
-        external_mod.VERBOSE = output_verbose
-    except Exception:
-        pass
-
+    if eval_samples > 0:
+        eval_count = min(eval_samples, eval_len) if eval_len > 0 else eval_samples
+        ce_reward.EVAL_LOG_EVERY = int(eval_count) * max(1, num_turns_val)
+    else:
+        ce_reward.EVAL_LOG_EVERY = None
+    ce_reward.reset_eval_log_state()
+    external_mod.VERBOSE = output_verbose
     reward_processor = None
     reward_proc_cfg = cfg.get("reward_processor", {}) or {}
     if reward_proc_cfg.get("enabled", True):
@@ -664,58 +567,54 @@ def main() -> int:
         def _register_context(ds, split_name: str) -> None:
             if ds is None:
                 return
-            try:
-                for idx in range(len(ds)):
-                    item = ds[idx]
-                    skeleton = str(item.get("skeleton", ""))
-                    test_code = str(item.get("test", ""))
-                    class_name = extract_class_name(skeleton) or ""
-                    method_names = extract_incomplete_methods(skeleton)
-                    example = {
-                        "skeleton": skeleton,
-                        "class_name": class_name,
-                        "task_id": f"{split_name}:{idx}",
-                    }
+            for idx in range(len(ds)):
+                item = ds[idx]
+                skeleton = str(item.get("skeleton", ""))
+                test_code = str(item.get("test", ""))
+                class_name = extract_class_name(skeleton) or ""
+                method_names = extract_incomplete_methods(skeleton)
+                example = {
+                    "skeleton": skeleton,
+                    "class_name": class_name,
+                    "task_id": f"{split_name}:{idx}",
+                }
+                try:
+                    part = strategy.partition(example)
+                except Exception:
+                    part = {}
+                assignments: Dict[int, List[str]] = {i: [] for i in range(num_agents)}
+                if part:
+                    for m, aid in part.items():
+                        if 0 <= int(aid) < num_agents:
+                            assignments[int(aid)].append(m)
+
+                prompts_for_agents: List[str] = []
+                for aidx, fmt in enumerate(formatters):
                     try:
-                        part = strategy.partition(example)
+                        p = fmt(example)
                     except Exception:
-                        part = {}
-                    assignments: Dict[int, List[str]] = {i: [] for i in range(num_agents)}
-                    if part:
-                        for m, aid in part.items():
-                            if 0 <= int(aid) < num_agents:
-                                assignments[int(aid)].append(m)
+                        p = build_agent_prompt(
+                            skeleton=skeleton,
+                            class_name=class_name,
+                            assigned_methods=assignments.get(aidx, []),
+                        )
+                    prompts_for_agents.append(p)
 
-                    prompts_for_agents: List[str] = []
-                    for aidx, fmt in enumerate(formatters):
-                        try:
-                            p = fmt(example)
-                        except Exception:
-                            p = build_agent_prompt(
-                                skeleton=skeleton,
-                                class_name=class_name,
-                                assigned_methods=assignments.get(aidx, []),
-                            )
-                        prompts_for_agents.append(p)
-
-                    payload = {
-                        "skeleton": skeleton,
-                        "class_name": class_name,
-                        "tests_eval": test_code,
-                        "tests_sandbox": test_code,
-                        "method_names": method_names,
-                        "assignments": assignments,
-                    }
-                    ds_key = _normalize_key(str(item.get("prompt", f"classeval:{split_name}:{idx}")))
-                    if ds_key:
-                        context_map[ds_key] = payload
-                    for p in prompts_for_agents:
-                        key = _normalize_key(p)
-                        if key:
-                            context_map[key] = payload
-            except Exception:
-                pass
-
+                payload = {
+                    "skeleton": skeleton,
+                    "class_name": class_name,
+                    "tests_eval": test_code,
+                    "tests_sandbox": test_code,
+                    "method_names": method_names,
+                    "assignments": assignments,
+                }
+                ds_key = _normalize_key(str(item.get("prompt", f"classeval:{split_name}:{idx}")))
+                if ds_key:
+                    context_map[ds_key] = payload
+                for p in prompts_for_agents:
+                    key = _normalize_key(p)
+                    if key:
+                        context_map[key] = payload
         _register_context(train_ds, "train")
         _register_context(eval_ds, "eval")
 
@@ -748,23 +647,17 @@ def main() -> int:
                 original_prompt=original_prompt_flag,
                 previous_response=previous_response_flag,
             )
-            try:
-                item_key = _normalize_key(str(prompt or ""))
-                item = prompt_to_item.get(item_key) or dataset_prompt_map.get(item_key)
-                if item and isinstance(prompts, (list, tuple)):
-                    for p in prompts:
-                        _register_prompt(str(p), item)
-            except Exception:
-                pass
+            item_key = _normalize_key(str(prompt or ""))
+            item = prompt_to_item.get(item_key) or dataset_prompt_map.get(item_key)
+            if item and isinstance(prompts, (list, tuple)):
+                for p in prompts:
+                    _register_prompt(str(p), item)
             return prompts
 
         trainer_kwargs["external_transition"] = external_transition_wrapper
 
     trainer = IACTrainer(**trainer_kwargs)
-    try:
-        trainer.verbose = bool(output_verbose)
-    except Exception:
-        pass
+    trainer.verbose = bool(output_verbose)
     trainer.train()
 
     if bool(output_cfg.get("save_final_model", False)):
@@ -772,7 +665,7 @@ def main() -> int:
         if save_path_cfg:
             save_path = str(save_path_cfg)
         else:
-            save_path = os.path.join(os.path.abspath(iac_args.output_dir), "final_model")
+            save_path = os.path.join(os.path.abspath(output_dir), "final_model")
         trainer.save_model(save_path)
         print(f"Model saved to: {save_path}")
 
