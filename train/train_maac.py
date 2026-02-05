@@ -92,70 +92,6 @@ def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
     return result
 
 
-def _preferred_split_key(ds_all: Any) -> Optional[str]:
-    try:
-        keys = list(ds_all.keys())  # type: ignore[attr-defined]
-    except Exception:
-        return None
-    for k in ("train", "validation", "val", "test"):
-        if k in ds_all:
-            return k
-    return keys[0] if keys else None
-
-
-def _manual_slice_dataset(ds: Any, split_expr: Optional[str]) -> Any:
-    if not split_expr or "[" not in split_expr or "]" not in split_expr:
-        return ds
-    try:
-        m = re.search(r"\[\s*(?P<start>-?\d*)\s*:\s*(?P<end>-?\d*)\s*\]", split_expr)
-        if not m:
-            return ds
-        start_raw = m.group("start")
-        end_raw = m.group("end")
-        start = int(start_raw) if start_raw not in (None, "", "+") else None
-        end = int(end_raw) if end_raw not in (None, "", "+") else None
-        n = len(ds)
-        s_idx = start if start is not None else 0
-        e_idx = end if end is not None else n
-        if s_idx < 0:
-            s_idx = max(0, n + s_idx)
-        if e_idx < 0:
-            e_idx = max(0, n + e_idx)
-        e_idx = min(max(s_idx, e_idx), n)
-        return ds.select(range(s_idx, e_idx))
-    except Exception:
-        return ds
-
-
-def _load_dataset_with_optional_split(dataset_name: str, dataset_split: Optional[str]):
-    if dataset_split:
-        try:
-            return load_dataset(dataset_name, split=dataset_split)
-        except Exception:
-            try:
-                ds_all = load_dataset(dataset_name)
-            except Exception as e:
-                raise e
-            base_split = str(dataset_split).split("[", 1)[0].split(":", 1)[0].strip()
-            base_ds = ds_all
-            if base_split and hasattr(ds_all, "keys") and base_split in ds_all:  # type: ignore[attr-defined]
-                base_ds = ds_all[base_split]
-            else:
-                preferred = _preferred_split_key(ds_all)
-                if preferred is not None:
-                    base_ds = ds_all[preferred]
-            sliced = _manual_slice_dataset(base_ds, dataset_split)
-            print(
-                f"[data] Loaded {dataset_name} via fallback split={dataset_split}; using {len(sliced)} examples"
-            )
-            return sliced
-    ds_all = load_dataset(dataset_name)
-    preferred = _preferred_split_key(ds_all)
-    if preferred is not None and hasattr(ds_all, "keys"):  # type: ignore[attr-defined]
-        return ds_all[preferred]
-    return ds_all
-
-
 def _as_int(x: Any, default: int) -> int:
     try:
         if x is None or isinstance(x, bool):
@@ -361,8 +297,8 @@ def main() -> int:
         eval_split = eval_split.strip() or None
 
     try:
-        train_ds = _load_dataset_with_optional_split(dataset_name, train_split)
-        eval_ds = _load_dataset_with_optional_split(dataset_name, eval_split) if eval_split else None
+        train_ds = load_dataset(dataset_name, split=train_split)
+        eval_ds = load_dataset(dataset_name, split=eval_split) if eval_split else None
     except Exception as e:
         print(
             f"Failed to load dataset name={dataset_name} train_split={train_split} eval_split={eval_split}: {e}"

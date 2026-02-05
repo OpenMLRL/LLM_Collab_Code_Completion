@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import random
 import re
-from typing import Any, Dict, Iterable, List, Mapping, Sequence, Tuple
+from typing import Any, Dict, Iterable, List
 
 
 def _sanitize_python_source(text: str) -> str:
@@ -153,13 +153,3 @@ def extract_method_param_counts(skeleton: str) -> Dict[str, int]:
             break
     return counts
 
-
-def get_method_partition_for_example(
-    mode: str,
-    methods: Sequence[str],
-    num_agents: int,
-    seed: int,
-    task_id: str | None = None,
-) -> Dict[str, int]:
-    """Provide a simple deterministic partition for legacy consumers."""
-    return {}
