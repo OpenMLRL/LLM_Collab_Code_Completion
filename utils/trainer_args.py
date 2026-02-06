@@ -78,6 +78,22 @@ def _as_opt_int(x: Any, default: Optional[int]) -> Optional[int]:
     return default
 
 
+def _as_bool(x: Any, default: bool) -> bool:
+    if x is None:
+        return bool(default)
+    if isinstance(x, bool):
+        return x
+    if isinstance(x, (int, float)):
+        return bool(x)
+    if isinstance(x, str):
+        s = x.strip().lower()
+        if s in ("true", "1", "yes", "y", "t"):
+            return True
+        if s in ("false", "0", "no", "n", "f"):
+            return False
+    return bool(x)
+
+
 def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
     tr = cfg.get("magrpo", {})
     lr_val = tr.get("agent_learning_rate", 3e-5)
@@ -109,6 +125,9 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
         {
             "rollout_buffer_size": _as_int(tr.get("rollout_buffer_size", 2), 2),
             "train_batch_size": _as_opt_int(tr.get("train_batch_size", None), None),
+            "advantage_normalization": _as_bool(
+                tr.get("advantage_normalization", True), True
+            ),
             "eval_interval": _as_int(tr.get("eval_interval", 16), 16),
             "eval_num_samples": _as_int(tr.get("eval_num_samples", 4), 4),
             "eval_batch_size": _as_int(tr.get("eval_batch_size", 1), 1),

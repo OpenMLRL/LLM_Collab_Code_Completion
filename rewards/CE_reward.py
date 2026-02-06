@@ -24,7 +24,6 @@ import tempfile
 from collections import OrderedDict
 from typing import Any, Dict, List, Set
 import io
-import tokenize
 import os
 
 VERBOSE = True
@@ -292,77 +291,6 @@ if __name__ == "__main__":
 
 
 # ---------- Reward Factory (multi-agent merge + scoring) ----------
-def _is_triple_quoted_string_literal(s: str) -> bool:
-    """Heuristic check if a token string is triple-quoted (handles prefixes rRuUbBfF)."""
-    i = 0
-    while i < len(s) and s[i] in 'rRbBuUfF':
-        i += 1
-    if i + 2 < len(s) and s[i] in ("'", '"') and s[i] == s[i+1] == s[i+2]:
-        return True
-    return False
-
-
-def _docstring_line_indices(text: str) -> Set[int]:
-    """Return 1-based line numbers that belong to triple-quoted string literals.
-
-    Tries tokenize first for accuracy; falls back to a simple delimiter scan
-    if tokenization fails.
-    """
-    doc_lines: Set[int] = set()
-    for tok in tokenize.generate_tokens(io.StringIO(text).readline):
-        if tok.type == tokenize.STRING and _is_triple_quoted_string_literal(tok.string):
-            start_line = tok.start[0]
-            end_line = tok.end[0]
-            for ln in range(start_line, end_line + 1):
-                doc_lines.add(ln)
-    return doc_lines
-    lines = text.splitlines()
-    in_triple = False
-    delim = None
-    for idx, line in enumerate(lines, start=1):
-        j = 0
-        found_segment = False
-        L = len(line)
-        while j + 2 < L:
-            seg = line[j:j+3]
-            if not in_triple and (seg == '"""' or seg == "'''"):
-                in_triple = True
-                delim = seg
-                found_segment = True
-                j += 3
-                continue
-            if in_triple and seg == delim:
-                in_triple = False
-                delim = None
-                found_segment = True
-                j += 3
-                continue
-            j += 1
-        if in_triple or found_segment:
-            doc_lines.add(idx)
-    return doc_lines
-
-
-def _compute_comment_ratio_including_docstrings(text: str) -> float:
-    """Compute comment ratio counting both # lines and triple-quoted blocks.
-
-    Ratio = comment_like_nonempty_lines / total_nonempty_lines. Lines inside
-    triple-quoted strings (three double quotes or three single quotes) are counted as comment-like.
-    """
-    if not text:
-        return 0.0
-    lines = text.splitlines()
-    doc_lines = _docstring_line_indices(text)
-    nonempty_total = 0
-    comment_like = 0
-    for idx, line in enumerate(lines, start=1):
-        if not line.strip():
-            continue
-        nonempty_total += 1
-        if line.lstrip().startswith('#') or (idx in doc_lines):
-            comment_like += 1
-    return (comment_like / nonempty_total) if nonempty_total > 0 else 0.0
-
 from typing import Callable  # re-export type for signatures
 from LLM_Collab_Code_Completion.utils.data import (
     extract_class_name,
@@ -375,81 +303,6 @@ from LLM_Collab_Code_Completion.utils.merge import (
     build_method_map_with_syntax_selection,
 )
 
-
-def _compute_call_graph_components(source_code: str, class_name: str, methods: Set[str]) -> List[Set[str]]:
-    """Build undirected connected components of method-call graph within the class.
-
-    Edges between methods u-v if method u contains a call to v (e.g., self.v(...)).
-    Only consider methods within the provided `methods` set.
-    Returns a list of components (each as a set of method names).
-    """
-    comps: List[Set[str]] = []
-    if not source_code or not class_name or not methods:
-        return comps
-    try:
-        import ast
-    except Exception:
-        return comps
-    try:
-        tree = ast.parse(source_code)
-    except Exception:
-        return comps
-
-    # Locate class
-    target = None
-    for node in tree.body:
-        if isinstance(node, ast.ClassDef) and node.name == class_name:
-            target = node
-            break
-    if target is None:
-        return comps
-
-    # Build adjacency
-    adj: Dict[str, Set[str]] = {m: set() for m in methods}
-
-    def collect_calls(fn: "ast.FunctionDef") -> Set[str]:
-        called: Set[str] = set()
-        for ch in ast.walk(fn):
-            if isinstance(ch, ast.Call):
-                f = ch.func
-                # self.method(...) or obj.method(...)
-                if isinstance(f, ast.Attribute):
-                    name = f.attr
-                    if name in methods:
-                        called.add(name)
-                # direct function call (unlikely in class method context)
-        return called
-
-    for item in target.body:
-        if isinstance(item, (ast.FunctionDef,)):
-            src = item.name
-            if src not in methods:
-                continue
-            outs = collect_calls(item)
-            for dst in outs:
-                if dst in methods and dst != src:
-                    adj[src].add(dst)
-                    adj[dst].add(src)
-
-    # Connected components on adjacency
-    seen: Set[str] = set()
-    for m in methods:
-        if m in seen:
-            continue
-        stack = [m]
-        comp: Set[str] = set()
-        while stack:
-            u = stack.pop()
-            if u in seen:
-                continue
-            seen.add(u)
-            comp.add(u)
-            for v in adj.get(u, set()):
-                if v not in seen:
-                    stack.append(v)
-        if comp:
-            comps.append(comp)
-    return comps
 
 def get_reward_function(strategy, num_agents: int) -> Callable[..., List[float]]:
     """Return a reward function

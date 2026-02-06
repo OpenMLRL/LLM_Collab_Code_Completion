@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import ast
-import random
 import re
-from typing import Any, Dict, Iterable, List
+from typing import Dict, List
 
 
 def _sanitize_python_source(text: str) -> str:
@@ -26,46 +25,6 @@ def _sanitize_python_source(text: str) -> str:
         ord("\u200B"): None,  # zero width space → remove
     }
     return text.translate(translation)
-
-
-def dataset_train_eval_split(ds_all: Any, split_ratio: float = 0.8, seed: int = 42):
-    """Return (train, eval) Dataset objects from a datasets.Dataset or DatasetDict.
-
-    Strategy:
-    - If ds_all is a DatasetDict, prefer a single representative split (train|validation|test|first)
-      then perform a random train_test_split based on split_ratio for stability.
-    - If ds_all is already a Dataset, split it directly.
-    """
-    try:
-        # DatasetDict path
-        keys = list(ds_all.keys())  # type: ignore[attr-defined]
-        preferred = None
-        for k in ("train", "validation", "test"):
-            if k in ds_all:
-                preferred = k
-                break
-        if preferred is None and keys:
-            preferred = keys[0]
-        base = ds_all[preferred]
-    except Exception:
-        # Assume already a Dataset
-        base = ds_all
-
-    # Use huggingface train_test_split for reproducibility
-    test_size = max(0.0, min(1.0, 1.0 - float(split_ratio)))
-    try:
-        split = base.train_test_split(test_size=test_size or 0.0001, seed=int(seed))
-        return split["train"], split["test"]
-    except Exception:
-        # Fallback: manual slicing
-        n = len(base)
-        idxs = list(range(n))
-        rnd = random.Random(int(seed))
-        rnd.shuffle(idxs)
-        k = int(n * float(split_ratio))
-        train_idx = idxs[:k]
-        eval_idx = idxs[k:]
-        return base.select(train_idx), base.select(eval_idx)
 
 
 def extract_class_name(skeleton: str) -> str | None:
@@ -152,4 +111,3 @@ def extract_method_param_counts(skeleton: str) -> Dict[str, int]:
                     counts[item.name] = _count_args(item.args)
             break
     return counts
-
