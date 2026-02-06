@@ -199,10 +199,6 @@ def _build_maac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> MAACC
         tr = {}
     output_cfg = cfg.get("output", {}) or {}
 
-    critic_model = tr.get("critic_model") or tr.get("critic_model_name_or_path") or model_name
-    if critic_model is None:
-        raise ValueError("maac.critic_model_name_or_path must be provided")
-
     adv_norm = tr.get("advantage_normalization", tr.get("normalize_advantage", True))
     critic_type = tr.get("critic_type", "v")
     if critic_type is not None:
@@ -211,7 +207,7 @@ def _build_maac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> MAACC
     candidate = {
         "num_turns": _as_int(tr.get("num_turns", 1), 1),
         "num_train_epochs": _as_int(tr.get("num_train_epochs", 40), 40),
-        "actor_learning_rate": _as_float(tr.get("actor_learning_rate", 5e-6), 5e-6),
+        "agent_learning_rate": _as_float(tr.get("agent_learning_rate", 5e-6), 5e-6),
         "critic_learning_rate": _as_float(
             tr.get("critic_learning_rate", 5e-6), 5e-6
         ),
@@ -225,12 +221,10 @@ def _build_maac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> MAACC
         "do_sample": _as_bool(tr.get("do_sample", True), True),
         "num_agents": _as_int(tr.get("num_agents", 2), 2),
         "num_generations": _as_int(tr.get("num_generations", 1), 1),
-        "critic_model_name_or_path": critic_model,
         "discount": _as_float(tr.get("discount", 0.9), 0.9),
         "critic_type": critic_type,
         "early_termination_threshold": _as_opt_float(
-            tr.get("early_termination_threshold", tr.get("termination_threshold", None)),
-            None,
+            tr.get("early_termination_threshold", None), None
         ),
         "eval_interval": _as_int(tr.get("eval_interval", 16), 16),
         "eval_num_samples": _as_int(tr.get("eval_num_samples", 4), 4),
@@ -259,6 +253,7 @@ def main() -> int:
         _deep_merge(cfg, overrides)
 
     model_cfg = cfg.get("model", {})
+    critic_cfg = cfg.get("critic", {})
     dataset_cfg = cfg.get("dataset", {})
     maac_cfg = cfg.get("maac", {})
     output_cfg = cfg.get("output", {})
@@ -350,6 +345,12 @@ def main() -> int:
 
     maac_args = _build_maac_args(cfg, model_name=model_name)
     num_agents = int(getattr(maac_args, "num_agents", 1))
+
+    if not isinstance(critic_cfg, dict):
+        raise ValueError("critic section must be a mapping")
+    critic_name = str(critic_cfg.get("name", "")).strip()
+    if not critic_name:
+        raise ValueError("critic.name must be provided for MAAC")
 
     strategy = get_strategy(num_agents=num_agents, seed=seed)
     formatters = build_agent_formatters(strategy)
@@ -540,11 +541,14 @@ def main() -> int:
         "model_config": {
             "tokenizer_kwargs": tokenizer_kwargs,
             "model_kwargs": model_kwargs,
-            "critic_model_kwargs": maac_cfg.get("critic_model_kwargs", model_kwargs),
+            "critic_model_kwargs": critic_cfg.get("model_kwargs", {}),
             "critic_value_head_hidden_dim": maac_cfg.get("critic_value_head_hidden_dim"),
         },
         "wandb_config": wandb_config,
     }
+    critics = [critic_name]
+    if critics is not None:
+        trainer_kwargs["critics"] = critics
     if reward_processor is not None:
         trainer_kwargs["reward_processor"] = reward_processor
 

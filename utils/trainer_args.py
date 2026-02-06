@@ -80,12 +80,12 @@ def _as_opt_int(x: Any, default: Optional[int]) -> Optional[int]:
 
 def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
     tr = cfg.get("magrpo", {})
-    lr_val = tr.get("learning_rate", tr.get("lr", 3e-5))
+    lr_val = tr.get("agent_learning_rate", 3e-5)
 
     candidate = {
         "num_turns": _as_int(tr.get("num_turns", 1), 1),
         "num_train_epochs": _as_int(tr.get("num_train_epochs", 3), 3),
-        "learning_rate": _as_float(lr_val, 3e-5),
+        "agent_learning_rate": _as_float(lr_val, 3e-5),
         "logging_steps": _as_int(tr.get("logging_steps", 50), 50),
         "num_generations": _as_int(tr.get("num_generations", 4), 4),
         "max_new_tokens": _as_int(tr.get("max_new_tokens", 512), 512),
@@ -101,9 +101,9 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
             "joint_mode": str(tr.get("joint_mode", "aligned")),
         }
     )
-    if "termination_threshold" in tr:
-        candidate["termination_threshold"] = _as_opt_float(
-            tr.get("termination_threshold", None), None
+    if "early_termination_threshold" in tr:
+        candidate["early_termination_threshold"] = _as_opt_float(
+            tr.get("early_termination_threshold", None), None
         )
     candidate.update(
         {
@@ -127,7 +127,4 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
     filtered = {k: v for k, v in candidate.items() if k in params}
     cfg_obj = MAGRPOConfig(**filtered)
 
-    # Ensure learning_rate is accessible on the config object even if not in __init__
-    if not hasattr(cfg_obj, "learning_rate"):
-        setattr(cfg_obj, "learning_rate", _as_float(lr_val, 3e-5))
     return cfg_obj

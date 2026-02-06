@@ -198,16 +198,13 @@ def _build_iac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> IACCon
     if not isinstance(tr, dict):
         tr = {}
     use_separate_critic = _as_bool(tr.get("use_separate_critic", True), True)
-    critic_model = tr.get("critic_model") or tr.get("critic_model_name_or_path") or model_name
-    if use_separate_critic and critic_model is None:
-        raise ValueError("iac.critic_model_name_or_path must be provided when use_separate_critic is true")
 
     adv_norm = tr.get("advantage_normalization", tr.get("normalize_advantage", True))
 
     candidate = {
         "num_turns": _as_int(tr.get("num_turns", 1), 1),
         "num_train_epochs": _as_int(tr.get("num_train_epochs", 40), 40),
-        "actor_learning_rate": _as_float(tr.get("actor_learning_rate", 5e-6), 5e-6),
+        "agent_learning_rate": _as_float(tr.get("agent_learning_rate", 5e-6), 5e-6),
         "critic_learning_rate": _as_opt_float(
             tr.get("critic_learning_rate", 5e-6), 5e-6
         ),
@@ -223,15 +220,13 @@ def _build_iac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> IACCon
         "num_agents": _as_int(tr.get("num_agents", 2), 2),
         "num_generations": _as_int(tr.get("num_generations", 1), 1),
         "use_separate_critic": use_separate_critic,
-        "critic_model_name_or_path": critic_model if use_separate_critic else None,
         "critic_value_head_hidden_dim": _as_opt_int(
             tr.get("critic_value_head_hidden_dim", None), None
         ),
         "value_head_hidden_dim": _as_opt_int(tr.get("value_head_hidden_dim", None), None),
         "discount": _as_float(tr.get("discount", 0.9), 0.9),
         "early_termination_threshold": _as_opt_float(
-            tr.get("early_termination_threshold", tr.get("termination_threshold", None)),
-            None,
+            tr.get("early_termination_threshold", None), None
         ),
         "eval_interval": _as_int(tr.get("eval_interval", 16), 16),
         "eval_num_samples": _as_int(tr.get("eval_num_samples", 4), 4),
@@ -260,6 +255,7 @@ def main() -> int:
         _deep_merge(cfg, overrides)
 
     model_cfg = cfg.get("model", {})
+    critic_cfg = cfg.get("critic", {})
     dataset_cfg = cfg.get("dataset", {})
     iac_cfg = cfg.get("iac", {})
     output_cfg = cfg.get("output", {})
@@ -351,6 +347,14 @@ def main() -> int:
 
     iac_args = _build_iac_args(cfg, model_name=model_name)
     num_agents = int(getattr(iac_args, "num_agents", 1))
+
+    critic_name = None
+    if bool(getattr(iac_args, "use_separate_critic", True)):
+        if not isinstance(critic_cfg, dict):
+            raise ValueError("critic section must be a mapping when use_separate_critic is true")
+        critic_name = str(critic_cfg.get("name", "")).strip()
+        if not critic_name:
+            raise ValueError("critic.name must be provided when use_separate_critic is true")
 
     strategy = get_strategy(num_agents=num_agents, seed=seed)
     formatters = build_agent_formatters(strategy)
@@ -539,12 +543,21 @@ def main() -> int:
         "model_config": {
             "tokenizer_kwargs": tokenizer_kwargs,
             "model_kwargs": model_kwargs,
-            "critic_model_kwargs": iac_cfg.get("critic_model_kwargs", model_kwargs),
+            "critic_model_kwargs": (
+                critic_cfg.get("model_kwargs", {})
+                if critic_name is not None
+                else model_kwargs
+            ),
             "critic_value_head_hidden_dim": iac_cfg.get("critic_value_head_hidden_dim"),
             "value_head_hidden_dim": iac_cfg.get("value_head_hidden_dim"),
         },
         "wandb_config": wandb_config,
     }
+    critics = None
+    if bool(getattr(iac_args, "use_separate_critic", True)):
+        critics = [critic_name] * num_agents
+    if critics is not None:
+        trainer_kwargs["critics"] = critics
     if reward_processor is not None:
         trainer_kwargs["reward_processor"] = reward_processor
 
