@@ -26,8 +26,8 @@ conda install -c conda-forge comlrl
   or `pass`), and canonical hidden tests.
 - **Splitting**: `train/train_magrpo.py` loads explicit HF slices from
   `dataset.train_split` and `dataset.eval_split` (e.g., `test[:50]` and `test[50:]`).
-- **Subsetting**: if a split name is missing (e.g., ClassEval only has `test`),
-  the loader falls back to the first available split before slicing.
+- **Subsetting**: ClassEval exposes only `test`, so use slice strings on `test`
+  (e.g., `test[:50]` and `test[50:]`). Missing or invalid splits will error.
 - **Prompting**: prompts include the sanitized class skeleton plus per-agent method
   assignments. The default strategy assigns 1-parameter methods to agent 0 and all other
   methods to agent 1.
