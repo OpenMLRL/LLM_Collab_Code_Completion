@@ -29,7 +29,6 @@ import torch  # type: ignore
 from comlrl.trainers.actor_critic import IACConfig, IACTrainer  # type: ignore
 from comlrl.utils.reward_processor import RewardProcessors  # type: ignore
 
-from LLM_Collab_Code_Completion.utils.patches import apply_default_patches
 from LLM_Collab_Code_Completion.utils.data import (
     extract_class_name,
     extract_incomplete_methods,
@@ -322,11 +321,10 @@ def main() -> int:
         os.environ["CLASSEVAL_TMP_BASE"] = str(tmp_base)
 
     model_name = str(model_cfg.get("name", "Qwen/Qwen2.5-Coder-7B")).strip()
-    tokenizer_kwargs = model_cfg.get("tokenizer_kwargs", {}) or {}
-    model_kwargs = model_cfg.get("model_kwargs", {}) or {}
+    model_kwargs: Dict[str, Any] = {}
 
     torch_dtype = _map_dtype(
-        model_cfg.get("dtype") or model_cfg.get("torch_dtype") or model_kwargs.get("torch_dtype")
+        model_cfg.get("dtype") or model_cfg.get("torch_dtype")
     )
     if torch_dtype is None:
         try:
@@ -334,12 +332,10 @@ def main() -> int:
                 torch_dtype = torch.bfloat16
         except Exception:
             torch_dtype = None
-    if torch_dtype is not None and "torch_dtype" not in model_kwargs:
+    if torch_dtype is not None:
         model_kwargs["torch_dtype"] = torch_dtype
-    model_kwargs.setdefault("low_cpu_mem_usage", True)
-    model_kwargs.setdefault("attn_implementation", "sdpa")
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, **tokenizer_kwargs)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -353,6 +349,14 @@ def main() -> int:
         critic_name = str(critic_cfg.get("name", "")).strip()
         if not critic_name:
             raise ValueError("critic.name must be provided when use_separate_critic is true")
+    critic_torch_dtype = None
+    if isinstance(critic_cfg, dict):
+        critic_torch_dtype = _map_dtype(
+            critic_cfg.get("torch_dtype") or critic_cfg.get("dtype")
+        )
+    critic_model_kwargs: Dict[str, Any] = {}
+    if critic_torch_dtype is not None:
+        critic_model_kwargs["torch_dtype"] = critic_torch_dtype
 
     strategy = get_strategy(num_agents=num_agents, seed=seed)
     formatters = build_agent_formatters(strategy)
@@ -539,13 +543,8 @@ def main() -> int:
         "train_dataset": train_ds,
         "eval_dataset": eval_ds,
         "model_config": {
-            "tokenizer_kwargs": tokenizer_kwargs,
             "model_kwargs": model_kwargs,
-            "critic_model_kwargs": (
-                critic_cfg.get("model_kwargs", {})
-                if critic_name is not None
-                else model_kwargs
-            ),
+            "critic_model_kwargs": critic_model_kwargs if critic_name is not None else model_kwargs,
             "critic_value_head_hidden_dim": iac_cfg.get("critic_value_head_hidden_dim"),
             "value_head_hidden_dim": iac_cfg.get("value_head_hidden_dim"),
         },
@@ -559,7 +558,6 @@ def main() -> int:
     if reward_processor is not None:
         trainer_kwargs["reward_processor"] = reward_processor
 
-    apply_default_patches(cfg)
 
     is_multi_turn = False
     try:

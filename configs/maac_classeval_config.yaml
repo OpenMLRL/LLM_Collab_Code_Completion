@@ -4,25 +4,14 @@ model:
   temperature: 0.6
   top_p: 0.6
   max_length: 2048
-  tokenizer_kwargs: {}
-  model_kwargs:
-    trust_remote_code: true
-    device_map: auto
-    torch_dtype: bfloat16
-
+  torch_dtype: bfloat16
 critic:
   name: "Qwen/Qwen3-4B-Instruct-2507"
   type: qwen
   temperature: 0.6
   top_p: 0.6
   max_length: 2048
-  tokenizer_kwargs: {}
-  model_kwargs:
-    trust_remote_code: true
-    device_map: auto
-    torch_dtype: bfloat16
-
-
+  torch_dtype: bfloat16
 dataset:
   name: FudanSELab/ClassEval
   type: classeval
@@ -40,9 +29,6 @@ external:
   original_prompt: true
   previous_response: true
 
-patches:
-  generation_memory: true
-  single_agent_returns: true
 
 maac:
   num_agents: 2

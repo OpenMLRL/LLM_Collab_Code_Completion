@@ -24,7 +24,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
 import torch  # type: ignore
 
 from comlrl.trainers.reinforce import MAGRPOTrainer  # type: ignore
-from LLM_Collab_Code_Completion.utils.patches import apply_default_patches
 from LLM_Collab_Code_Completion.utils.trainer_args import get_trainer_args
 
 from LLM_Collab_Code_Completion.utils.data import (
@@ -176,13 +175,11 @@ def main():
     if tmp_base:
         os.environ["CLASSEVAL_TMP_BASE"] = str(tmp_base)
     model_name = model_cfg.get("name", "Qwen/Qwen2.5-3B")
-    tokenizer_kwargs = model_cfg.get("tokenizer_kwargs", {})
-    model_kwargs = model_cfg.get("model_kwargs", {})
+    model_kwargs: Dict[str, Any] = {}
 
     dtype_cfg = (
         model_cfg.get("dtype")
         or model_cfg.get("torch_dtype")
-        or model_kwargs.get("torch_dtype")
     )
 
     def _map_dtype(x):
@@ -209,23 +206,16 @@ def main():
         except Exception:
             torch_dtype = None
 
-    if torch_dtype is not None and "torch_dtype" not in model_kwargs:
+    if torch_dtype is not None:
         model_kwargs["torch_dtype"] = torch_dtype
 
-    model_kwargs.setdefault("low_cpu_mem_usage", True)
-    model_kwargs.setdefault("attn_implementation", "sdpa")
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name, **tokenizer_kwargs)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     agents = []
     for idx in range(num_agents):
         agent = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
-        if hasattr(agent, "config"):
-            agent.config.use_cache = False
-        if bool(model_cfg.get("gradient_checkpointing", True)):
-            agent.gradient_checkpointing_enable()
         agents.append(agent)
 
     strategy = get_strategy(num_agents=num_agents, seed=seed)
@@ -323,7 +313,6 @@ def main():
     }
     if reward_processor is not None:
         trainer_kwargs["reward_processor"] = reward_processor
-    apply_default_patches(cfg)
 
     is_multi_turn = False
     try:
