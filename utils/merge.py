@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import re
 from typing import Dict, List, Tuple, Iterable, Set
 import random
@@ -101,9 +99,6 @@ def _indent_block(block: str, indent_spaces: int) -> List[str]:
             out.append(pad + line)
         else:
             out.append(line)
-    if out and not out[-1].endswith("\n"):
-        # ensure trailing newline when joining into code
-        pass
     return out
 
 
