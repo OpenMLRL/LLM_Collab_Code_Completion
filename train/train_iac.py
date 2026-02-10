@@ -218,6 +218,8 @@ def _build_iac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> IACCon
         "num_agents": _as_int(tr.get("num_agents", 2), 2),
         "num_generations": _as_int(tr.get("num_generations", 1), 1),
         "use_separate_critic": use_separate_critic,
+        "agent_devices": tr.get("agent_devices"),
+        "critic_devices": tr.get("critic_devices"),
         "critic_value_head_hidden_dim": _as_opt_int(
             tr.get("critic_value_head_hidden_dim", None), None
         ),

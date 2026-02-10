@@ -25,6 +25,7 @@ external:
 
 magrpo:
   num_agents: 2
+  agent_devices: "auto"
   num_turns: 2
   num_train_epochs: 13
   agent_learning_rate: 1e-5

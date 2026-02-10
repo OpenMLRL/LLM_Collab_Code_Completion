@@ -219,6 +219,8 @@ def _build_maac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> MAACC
         "top_k": _as_opt_int(tr.get("top_k", None), None),
         "num_agents": _as_int(tr.get("num_agents", 2), 2),
         "num_generations": _as_int(tr.get("num_generations", 1), 1),
+        "agent_devices": tr.get("agent_devices"),
+        "critic_devices": tr.get("critic_devices"),
         "discount": _as_float(tr.get("discount", 0.9), 0.9),
         "critic_type": critic_type,
         "early_termination_threshold": _as_opt_float(

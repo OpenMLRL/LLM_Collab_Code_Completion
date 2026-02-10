@@ -115,6 +115,7 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
             "num_agents": _as_int(tr.get("num_agents", 1), 1),
             "discount": _as_float(tr.get("discount", 0.9), 0.9),
             "joint_mode": str(tr.get("joint_mode", "aligned")),
+            "agent_devices": tr.get("agent_devices"),
         }
     )
     if "early_termination_threshold" in tr:
