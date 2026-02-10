@@ -249,8 +249,10 @@ def main() -> int:
         overrides = parse_overrides(args.override)
         _deep_merge(cfg, overrides)
 
-    model_cfg = cfg.get("model", {})
-    critic_cfg = cfg.get("critic", {})
+    model_cfg = cfg.get("agent_model", {})
+    critic_model_cfg = cfg.get("critic_model", {})
+    if not isinstance(critic_model_cfg, dict):
+        critic_model_cfg = {}
     dataset_cfg = cfg.get("dataset", {})
     maac_cfg = cfg.get("maac", {})
     output_cfg = cfg.get("output", {})
@@ -319,8 +321,6 @@ def main() -> int:
         os.environ["CLASSEVAL_TMP_BASE"] = str(tmp_base)
 
     model_name = str(model_cfg.get("name", "Qwen/Qwen2.5-Coder-7B")).strip()
-    if model_cfg.get("agents") is not None:
-        raise ValueError("model.agents is not supported; use top-level agents.")
     agent_names = cfg.get("agents")
     model_kwargs: Dict[str, Any] = {}
 
@@ -345,13 +345,13 @@ def main() -> int:
             raise ValueError("agents must be a list of model names.")
         agent_names = [str(x) for x in agent_names]
         if model_name and any(name != model_name for name in agent_names):
-            raise ValueError("model.name conflicts with agents.")
+            raise ValueError("agent_model.name conflicts with agents.")
         if len(agent_names) != int(num_agents):
             raise ValueError("agents length must match maac.num_agents.")
 
     tokenizer_source = model_name or (agent_names[0] if agent_names else None)
     if not tokenizer_source:
-        raise ValueError("model.name or agents must be provided.")
+        raise ValueError("agent_model.name or agents must be provided.")
     if agent_names:
         tokenizers = [AutoTokenizer.from_pretrained(name) for name in agent_names]
     else:
@@ -361,13 +361,26 @@ def main() -> int:
             tok.pad_token = tok.eos_token
     tokenizer = tokenizers[0]
 
-    if not isinstance(critic_cfg, dict):
-        raise ValueError("critic section must be a mapping")
-    critic_name = str(critic_cfg.get("name", "")).strip()
-    if not critic_name:
-        raise ValueError("critic.name must be provided for MAAC")
+    critic_names = None
+    critics_field = cfg.get("critics")
+    if critics_field is not None:
+        if not isinstance(critics_field, (list, tuple)) or not all(
+            isinstance(x, str) for x in critics_field
+        ):
+            raise ValueError("critics must be a list of model names.")
+        critic_names = [str(x) for x in critics_field]
+        if len(critic_names) != 1:
+            raise ValueError("critics length must match 1 critic.")
+    critic_name = str(critic_model_cfg.get("name", "")).strip()
+    if critic_names is None:
+        if not critic_name:
+            raise ValueError("critic_model.name must be provided for MAAC")
+        critic_names = [critic_name]
+    else:
+        if critic_name and any(name != critic_name for name in critic_names):
+            raise ValueError("critic_model.name conflicts with critics.")
     critic_torch_dtype = _map_dtype(
-        critic_cfg.get("torch_dtype") or critic_cfg.get("dtype")
+        critic_model_cfg.get("torch_dtype") or critic_model_cfg.get("dtype")
     )
     critic_model_kwargs: Dict[str, Any] = {}
     if critic_torch_dtype is not None:
@@ -506,7 +519,7 @@ def main() -> int:
             "tags": tags,
             "config_sections": {
                 "dataset": dataset_cfg,
-                "model": model_cfg,
+                "agent_model": model_cfg,
                 "output": output_cfg,
                 "external": external_cfg,
                 "trainer": maac_cfg,
@@ -568,10 +581,8 @@ def main() -> int:
     if agent_names:
         trainer_kwargs["agents"] = agent_names
     else:
-        trainer_kwargs["model"] = model_name
-    critics = [critic_name]
-    if critics is not None:
-        trainer_kwargs["critics"] = critics
+        trainer_kwargs["agent_model"] = model_name
+    trainer_kwargs["critics"] = critic_names
     if reward_processor is not None:
         trainer_kwargs["reward_processor"] = reward_processor
 

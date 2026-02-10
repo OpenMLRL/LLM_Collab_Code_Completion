@@ -106,7 +106,7 @@ def main():
         overrides = parse_overrides(args.override)
         _deep_merge(cfg, overrides)
 
-    model_cfg = cfg.get("model", {})
+    model_cfg = cfg.get("agent_model", {})
     dataset_cfg = cfg.get("dataset", {})
     magrpo_cfg = cfg.get("magrpo", {})
     output_cfg = cfg.get("output", {})
@@ -175,8 +175,6 @@ def main():
     if tmp_base:
         os.environ["CLASSEVAL_TMP_BASE"] = str(tmp_base)
     model_name = model_cfg.get("name", "Qwen/Qwen2.5-3B")
-    if model_cfg.get("agents") is not None:
-        raise ValueError("model.agents is not supported; use top-level agents.")
     agent_names = cfg.get("agents")
     if agent_names is not None:
         if not isinstance(agent_names, (list, tuple)) or not all(
@@ -185,7 +183,7 @@ def main():
             raise ValueError("agents must be a list of model names.")
         agent_names = [str(x) for x in agent_names]
         if model_name and any(name != model_name for name in agent_names):
-            raise ValueError("model.name conflicts with agents.")
+            raise ValueError("agent_model.name conflicts with agents.")
         if len(agent_names) != int(num_agents):
             raise ValueError("agents length must match magrpo.num_agents.")
     model_kwargs: Dict[str, Any] = {}
@@ -224,7 +222,7 @@ def main():
 
     tokenizer_source = model_name or (agent_names[0] if agent_names else None)
     if not tokenizer_source:
-        raise ValueError("model.name or agents must be provided.")
+        raise ValueError("agent_model.name or agents must be provided.")
     if agent_names:
         tokenizers = [AutoTokenizer.from_pretrained(name) for name in agent_names]
     else:
@@ -280,7 +278,7 @@ def main():
             "tags": tags,
             "config_sections": {
                 "dataset": dataset_cfg,
-                "model": model_cfg,
+                "agent_model": model_cfg,
                 "output": output_cfg,
                 "external": external_cfg,
                 "trainer": magrpo_cfg,

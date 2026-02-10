@@ -38,8 +38,9 @@ conda install -c conda-forge comlrl
 
 Key sections in `configs/magrpo_classeval_config.yaml`:
 
-- `model`: base checkpoint (`Qwen/Qwen2.5-Coder-3B-Instruct` by default), tokenizer/model
-  kwargs, and device mapping.
+- `agent_model`: base checkpoint (`Qwen/Qwen2.5-Coder-3B-Instruct` by default), tokenizer
+  kwargs, and device mapping. Use top-level `agents` to provide a list of model names for
+  heterogeneous teams.
 - `dataset`: dataset name and split strings (`train_split`, `eval_split`) for
   ClassEval sub-slices or local mirrors.
 - `external`: feedback configuration (use `code_feedback` for syntax/test diagnostics).
