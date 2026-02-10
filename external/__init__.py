@@ -25,15 +25,12 @@ Usage:
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import builtins
 
-# Mode implementations live alongside this file
 from . import code_feedback
 from . import plain
 
-# Verbose toggle for external previews
 VERBOSE = True
 
 
-# Context resolver API
 _context_resolver: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None
 
 
@@ -99,7 +96,6 @@ def get_external_transition(
         )
 
     ctx = get_context(prompt) or {}
-    # Required context
     skeleton = ctx.get("skeleton", "")
     class_name = ctx.get("class_name") or ""
     method_names = list(ctx.get("method_names", []))

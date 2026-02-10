@@ -7,7 +7,6 @@ from typing import Dict, Iterable, Set
 def _strip_code_fences(text: str) -> str:
     s = (text or "").replace("\r\n", "\n").strip()
     if "```" in s:
-        # take the first code fence content
         start = s.find("```")
         if start != -1:
             start += 3
@@ -46,7 +45,6 @@ def extract_method_snippets(text: str, allowed_methods: Iterable[str]) -> Dict[s
         if name not in allowed:
             i += 1
             continue
-        # capture until next top-level def or EOF
         start = i
         j = i + 1
         while j < len(lines):
@@ -59,4 +57,3 @@ def extract_method_snippets(text: str, allowed_methods: Iterable[str]) -> Dict[s
         out[name] = block
         i = j
     return out
-
