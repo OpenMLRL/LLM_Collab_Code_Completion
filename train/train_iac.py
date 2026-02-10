@@ -344,12 +344,8 @@ def main() -> int:
         ):
             raise ValueError("agents must be a list of model names.")
         agent_names = [str(x) for x in agent_names]
-        if model_name and any(name != model_name for name in agent_names):
-            raise ValueError("agent_model.name conflicts with agents.")
-        if len(agent_names) != int(num_agents):
-            raise ValueError("agents length must match iac.num_agents.")
 
-    tokenizer_source = model_name or (agent_names[0] if agent_names else None)
+    tokenizer_source = agent_names[0] if agent_names else model_name
     if not tokenizer_source:
         raise ValueError("agent_model.name or agents must be provided.")
     if agent_names:
@@ -369,30 +365,13 @@ def main() -> int:
         ):
             raise ValueError("critics must be a list of model names.")
         critic_names = [str(x) for x in critics_field]
-        if len(critic_names) != int(num_agents):
-            raise ValueError("critics length must match iac.num_agents.")
 
     critic_name = None
-    if bool(getattr(iac_args, "use_separate_critic", True)):
-        if critic_names is None:
-            if not isinstance(critic_model_cfg, dict):
-                raise ValueError(
-                    "critic_model section must be a mapping when use_separate_critic is true"
-                )
-            critic_name = str(critic_model_cfg.get("name", "")).strip()
-            if not critic_name:
-                raise ValueError(
-                    "critic_model.name must be provided when use_separate_critic is true"
-                )
-            critic_names = [critic_name] * num_agents
-        else:
-            critic_name = None
-            if isinstance(critic_model_cfg, dict):
-                critic_name = str(critic_model_cfg.get("name", "")).strip()
-            if critic_name and any(name != critic_name for name in critic_names):
-                raise ValueError("critic_model.name conflicts with critics.")
-    elif critic_names is not None:
-        raise ValueError("critics requires use_separate_critic=true.")
+    if isinstance(critic_model_cfg, dict):
+        critic_name = str(critic_model_cfg.get("name", "")).strip() or None
+    elif isinstance(critic_model_cfg, str):
+        critic_name = critic_model_cfg.strip() or None
+    critics = critic_names
 
     critic_torch_dtype = None
     if isinstance(critic_model_cfg, dict):
@@ -598,11 +577,12 @@ def main() -> int:
         },
         "wandb_config": wandb_config,
     }
+    trainer_kwargs["agent_model"] = model_name or None
     if agent_names:
         trainer_kwargs["agents"] = agent_names
-    else:
-        trainer_kwargs["agent_model"] = model_name
-    if bool(getattr(iac_args, "use_separate_critic", True)):
+    if critic_name:
+        trainer_kwargs["critic_model"] = critic_name
+    if critic_names:
         trainer_kwargs["critics"] = critic_names
     if reward_processor is not None:
         trainer_kwargs["reward_processor"] = reward_processor
