@@ -175,6 +175,26 @@ def main():
     if tmp_base:
         os.environ["CLASSEVAL_TMP_BASE"] = str(tmp_base)
     model_name = model_cfg.get("name", "Qwen/Qwen2.5-3B")
+    agent_names = model_cfg.get("agents")
+    top_agents = cfg.get("agents")
+    if isinstance(top_agents, (list, tuple)):
+        if not all(isinstance(x, str) for x in top_agents):
+            raise ValueError("agents must be a list of model names.")
+        top_agents = [str(x) for x in top_agents]
+        if agent_names is not None and list(agent_names) != top_agents:
+            raise ValueError("model.agents conflicts with agents.")
+        if agent_names is None:
+            agent_names = top_agents
+    if agent_names is not None:
+        if not isinstance(agent_names, (list, tuple)) or not all(
+            isinstance(x, str) for x in agent_names
+        ):
+            raise ValueError("model.agents must be a list of model names.")
+        agent_names = [str(x) for x in agent_names]
+        if model_name and any(name != model_name for name in agent_names):
+            raise ValueError("model.name conflicts with model.agents.")
+        if len(agent_names) != int(num_agents):
+            raise ValueError("model.agents length must match magrpo.num_agents.")
     model_kwargs: Dict[str, Any] = {}
 
     dtype_cfg = (
@@ -209,14 +229,27 @@ def main():
     if torch_dtype is not None:
         model_kwargs["torch_dtype"] = torch_dtype
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer_source = model_name or (agent_names[0] if agent_names else None)
+    if not tokenizer_source:
+        raise ValueError("model.name or model.agents must be provided.")
+    if agent_names:
+        tokenizers = [AutoTokenizer.from_pretrained(name) for name in agent_names]
+    else:
+        tokenizers = [AutoTokenizer.from_pretrained(tokenizer_source)]
+    for tok in tokenizers:
+        if tok.pad_token is None:
+            tok.pad_token = tok.eos_token
+    tokenizer = tokenizers[0]
 
     agents = []
-    for idx in range(num_agents):
-        agent = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
-        agents.append(agent)
+    if agent_names:
+        for name in agent_names:
+            agent = AutoModelForCausalLM.from_pretrained(name, **model_kwargs)
+            agents.append(agent)
+    else:
+        for _ in range(num_agents):
+            agent = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+            agents.append(agent)
 
     strategy = get_strategy(num_agents=num_agents, seed=seed)
 
@@ -307,7 +340,7 @@ def main():
         "args": magrpo_args,
         "train_dataset": train_ds,
         "eval_dataset": eval_ds,
-        "tokenizer": tokenizer,
+        "tokenizer": tokenizers if agent_names else tokenizer,
         "wandb_config": wandb_config,
         "dataset_type": dataset_type,
     }
