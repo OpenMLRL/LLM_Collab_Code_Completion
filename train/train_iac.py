@@ -60,6 +60,21 @@ def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> None:
             base[key] = value
 
 
+def _parse_override_value(raw: str) -> Any:
+    value = raw.strip()
+    lowered = value.lower()
+    if lowered in ("true", "false"):
+        return lowered == "true"
+    if lowered in ("none", "null"):
+        return None
+    try:
+        import ast
+
+        return ast.literal_eval(value)
+    except (ValueError, SyntaxError):
+        return value
+
+
 def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
     if not overrides:
         return {}
@@ -78,9 +93,7 @@ def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
 
         keys = key.split(".")
 
-        import ast
-
-        value = ast.literal_eval(value)
+        value = _parse_override_value(value)
         current = result
         for k in keys[:-1]:
             if k not in current or not isinstance(current[k], dict):
