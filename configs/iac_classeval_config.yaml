@@ -1,17 +1,23 @@
-model:
+agent_model:
   name: Qwen/Qwen3-4B-Instruct-2507
   type: qwen
   temperature: 0.6
   top_p: 0.6
   max_length: 2048
   torch_dtype: bfloat16
-critic:
+
+agents: null
+
+critic_model:
   name: "Qwen/Qwen3-4B-Instruct-2507"
   type: qwen
   temperature: 0.6
   top_p: 0.6
   max_length: 2048
   torch_dtype: bfloat16
+
+critics: null
+
 dataset:
   name: FudanSELab/ClassEval
   type: classeval
@@ -28,7 +34,6 @@ external:
   mode: code_feedback
   original_prompt: true
   previous_response: true
-
 
 iac:
   num_agents: 2

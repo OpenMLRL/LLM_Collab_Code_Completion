@@ -15,7 +15,6 @@ class RewardLogger:
     All methods are safe to call when wandb is unavailable or not initialized.
     """
 
-    @staticmethod
     def _wandb_run():
         try:
             import wandb  # type: ignore
@@ -54,5 +53,3 @@ class RewardLogger:
         except Exception:
             # Swallow logging errors to keep training running
             return
-
-    @staticmethod

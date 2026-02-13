@@ -60,6 +60,21 @@ def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> None:
             base[key] = value
 
 
+def _parse_override_value(raw: str) -> Any:
+    value = raw.strip()
+    lowered = value.lower()
+    if lowered in ("true", "false"):
+        return lowered == "true"
+    if lowered in ("none", "null"):
+        return None
+    try:
+        import ast
+
+        return ast.literal_eval(value)
+    except (ValueError, SyntaxError):
+        return value
+
+
 def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
     if not overrides:
         return {}
@@ -78,9 +93,7 @@ def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
 
         keys = key.split(".")
 
-        import ast
-
-        value = ast.literal_eval(value)
+        value = _parse_override_value(value)
         current = result
         for k in keys[:-1]:
             if k not in current or not isinstance(current[k], dict):
@@ -251,8 +264,8 @@ def main() -> int:
         overrides = parse_overrides(args.override)
         _deep_merge(cfg, overrides)
 
-    model_cfg = cfg.get("model", {})
-    critic_cfg = cfg.get("critic", {})
+    model_cfg = cfg.get("agent_model", {})
+    critic_model_cfg = cfg.get("critic_model", {})
     dataset_cfg = cfg.get("dataset", {})
     iac_cfg = cfg.get("iac", {})
     output_cfg = cfg.get("output", {})
@@ -321,6 +334,7 @@ def main() -> int:
         os.environ["CLASSEVAL_TMP_BASE"] = str(tmp_base)
 
     model_name = str(model_cfg.get("name", "Qwen/Qwen2.5-Coder-7B")).strip()
+    agent_names = cfg.get("agents")
     model_kwargs: Dict[str, Any] = {}
 
     torch_dtype = _map_dtype(
@@ -335,24 +349,47 @@ def main() -> int:
     if torch_dtype is not None:
         model_kwargs["torch_dtype"] = torch_dtype
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
     iac_args = _build_iac_args(cfg, model_name=model_name)
     num_agents = int(getattr(iac_args, "num_agents", 1))
+    if agent_names is not None:
+        if not isinstance(agent_names, (list, tuple)) or not all(
+            isinstance(x, str) for x in agent_names
+        ):
+            raise ValueError("agents must be a list of model names.")
+        agent_names = [str(x) for x in agent_names]
+
+    tokenizer_source = agent_names[0] if agent_names else model_name
+    if not tokenizer_source:
+        raise ValueError("agent_model.name or agents must be provided.")
+    if agent_names:
+        tokenizers = [AutoTokenizer.from_pretrained(name) for name in agent_names]
+    else:
+        tokenizers = [AutoTokenizer.from_pretrained(tokenizer_source)]
+    for tok in tokenizers:
+        if tok.pad_token is None:
+            tok.pad_token = tok.eos_token
+    tokenizer = tokenizers[0]
+
+    critic_names = None
+    critics_field = cfg.get("critics")
+    if critics_field is not None:
+        if not isinstance(critics_field, (list, tuple)) or not all(
+            isinstance(x, str) for x in critics_field
+        ):
+            raise ValueError("critics must be a list of model names.")
+        critic_names = [str(x) for x in critics_field]
 
     critic_name = None
-    if bool(getattr(iac_args, "use_separate_critic", True)):
-        if not isinstance(critic_cfg, dict):
-            raise ValueError("critic section must be a mapping when use_separate_critic is true")
-        critic_name = str(critic_cfg.get("name", "")).strip()
-        if not critic_name:
-            raise ValueError("critic.name must be provided when use_separate_critic is true")
+    if isinstance(critic_model_cfg, dict):
+        critic_name = str(critic_model_cfg.get("name", "")).strip() or None
+    elif isinstance(critic_model_cfg, str):
+        critic_name = critic_model_cfg.strip() or None
+    critics = critic_names
+
     critic_torch_dtype = None
-    if isinstance(critic_cfg, dict):
+    if isinstance(critic_model_cfg, dict):
         critic_torch_dtype = _map_dtype(
-            critic_cfg.get("torch_dtype") or critic_cfg.get("dtype")
+            critic_model_cfg.get("torch_dtype") or critic_model_cfg.get("dtype")
         )
     critic_model_kwargs: Dict[str, Any] = {}
     if critic_torch_dtype is not None:
@@ -489,7 +526,7 @@ def main() -> int:
             "tags": tags,
             "config_sections": {
                 "dataset": dataset_cfg,
-                "model": model_cfg,
+                "agent_model": model_cfg,
                 "output": output_cfg,
                 "external": external_cfg,
                 "trainer": iac_cfg,
@@ -535,8 +572,7 @@ def main() -> int:
                 reward_processor = (lambda p=prev, s=shift_proc: (lambda x: s(p(x))))()
 
     trainer_kwargs: Dict[str, Any] = {
-        "model": model_name,
-        "tokenizer": tokenizer,
+        "tokenizer": tokenizers if agent_names else tokenizer,
         "reward_func": reward_func,
         "formatters": formatters,
         "args": iac_args,
@@ -544,17 +580,23 @@ def main() -> int:
         "eval_dataset": eval_ds,
         "model_config": {
             "model_kwargs": model_kwargs,
-            "critic_model_kwargs": critic_model_kwargs if critic_name is not None else model_kwargs,
+            "critic_model_kwargs": (
+                critic_model_kwargs
+                if bool(getattr(iac_args, "use_separate_critic", True))
+                else model_kwargs
+            ),
             "critic_value_head_hidden_dim": iac_cfg.get("critic_value_head_hidden_dim"),
             "value_head_hidden_dim": iac_cfg.get("value_head_hidden_dim"),
         },
         "wandb_config": wandb_config,
     }
-    critics = None
-    if bool(getattr(iac_args, "use_separate_critic", True)):
-        critics = [critic_name] * num_agents
-    if critics is not None:
-        trainer_kwargs["critics"] = critics
+    trainer_kwargs["agent_model"] = model_name or None
+    if agent_names:
+        trainer_kwargs["agents"] = agent_names
+    if critic_name:
+        trainer_kwargs["critic_model"] = critic_name
+    if critic_names:
+        trainer_kwargs["critics"] = critic_names
     if reward_processor is not None:
         trainer_kwargs["reward_processor"] = reward_processor
 

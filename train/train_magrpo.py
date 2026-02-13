@@ -60,6 +60,21 @@ def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> None:
             base[key] = value
 
 
+def _parse_override_value(raw: str) -> Any:
+    value = raw.strip()
+    lowered = value.lower()
+    if lowered in ("true", "false"):
+        return lowered == "true"
+    if lowered in ("none", "null"):
+        return None
+    try:
+        import ast
+
+        return ast.literal_eval(value)
+    except (ValueError, SyntaxError):
+        return value
+
+
 def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
     if not overrides:
         return {}
@@ -78,8 +93,7 @@ def parse_overrides(overrides: List[str]) -> Dict[str, Any]:
 
         keys = key.split(".")
 
-        import ast
-        value = ast.literal_eval(value)
+        value = _parse_override_value(value)
         current = result
         for k in keys[:-1]:
             if k not in current or not isinstance(current[k], dict):
@@ -106,7 +120,7 @@ def main():
         overrides = parse_overrides(args.override)
         _deep_merge(cfg, overrides)
 
-    model_cfg = cfg.get("model", {})
+    model_cfg = cfg.get("agent_model", {})
     dataset_cfg = cfg.get("dataset", {})
     magrpo_cfg = cfg.get("magrpo", {})
     output_cfg = cfg.get("output", {})
@@ -175,6 +189,13 @@ def main():
     if tmp_base:
         os.environ["CLASSEVAL_TMP_BASE"] = str(tmp_base)
     model_name = model_cfg.get("name", "Qwen/Qwen2.5-3B")
+    agent_names = cfg.get("agents")
+    if agent_names is not None:
+        if not isinstance(agent_names, (list, tuple)) or not all(
+            isinstance(x, str) for x in agent_names
+        ):
+            raise ValueError("agents must be a list of model names.")
+        agent_names = [str(x) for x in agent_names]
     model_kwargs: Dict[str, Any] = {}
 
     dtype_cfg = (
@@ -209,14 +230,27 @@ def main():
     if torch_dtype is not None:
         model_kwargs["torch_dtype"] = torch_dtype
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer_source = agent_names[0] if agent_names else model_name
+    if not tokenizer_source:
+        raise ValueError("agent_model.name or agents must be provided.")
+    if agent_names:
+        tokenizers = [AutoTokenizer.from_pretrained(name) for name in agent_names]
+    else:
+        tokenizers = [AutoTokenizer.from_pretrained(tokenizer_source)]
+    for tok in tokenizers:
+        if tok.pad_token is None:
+            tok.pad_token = tok.eos_token
+    tokenizer = tokenizers[0]
 
     agents = []
-    for idx in range(num_agents):
-        agent = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
-        agents.append(agent)
+    if agent_names:
+        for name in agent_names:
+            agent = AutoModelForCausalLM.from_pretrained(name, **model_kwargs)
+            agents.append(agent)
+    else:
+        for _ in range(num_agents):
+            agent = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+            agents.append(agent)
 
     strategy = get_strategy(num_agents=num_agents, seed=seed)
 
@@ -254,7 +288,7 @@ def main():
             "tags": tags,
             "config_sections": {
                 "dataset": dataset_cfg,
-                "model": model_cfg,
+                "agent_model": model_cfg,
                 "output": output_cfg,
                 "external": external_cfg,
                 "trainer": magrpo_cfg,
@@ -300,6 +334,7 @@ def main():
                 reward_processor = (lambda p=prev, s=shift_proc: (lambda x: s(p(x))))()
 
     trainer_kwargs = {
+        "agent_model": model_name or None,
         "agents": agents,
         "num_agents": num_agents,
         "reward_func": reward_func,
@@ -307,7 +342,7 @@ def main():
         "args": magrpo_args,
         "train_dataset": train_ds,
         "eval_dataset": eval_ds,
-        "tokenizer": tokenizer,
+        "tokenizer": tokenizers if agent_names else tokenizer,
         "wandb_config": wandb_config,
         "dataset_type": dataset_type,
     }

@@ -54,17 +54,14 @@ def extract_incomplete_methods(skeleton: str) -> List[str]:
             for item in node.body:
                 if isinstance(item, ast.FunctionDef):
                     body = item.body or []
-                    # Remove leading docstring expr if present
                     if body and isinstance(body[0], ast.Expr) and isinstance(getattr(body[0], "value", None), ast.Str):
                         body = body[1:]
-                    # Empty body or only 'pass'
                     if not body:
                         targets.append(item.name)
                         continue
                     if len(body) == 1 and isinstance(body[0], ast.Pass):
                         targets.append(item.name)
                         continue
-                    # Single raise NotImplementedError
                     if (
                         len(body) == 1
                         and isinstance(body[0], ast.Raise)

@@ -39,7 +39,6 @@ def _find_class_block(lines: List[str], class_name: str) -> Tuple[int, int, int]
     if class_indent is None:
         class_indent = 4  # assume one indent
 
-    # Find end of class block
     end = len(lines)
     for k in range(start + 1, len(lines)):
         s = lines[k]
@@ -130,7 +129,6 @@ def merge_methods_into_skeleton(skeleton: str, class_name: str, method_to_code: 
         cstart2, cend2, cindent2 = _find_class_block(lines, class_name)
         s, e, dindent = _find_method_region(lines, cstart2, cend2, cindent2, m)
         if s < 0:
-            # Append at end of class (before class end)
             insert_at = cend2
             new_block = _indent_block(impl.strip(), cindent2 + 4)
             lines[insert_at:insert_at] = new_block + [""]
@@ -145,7 +143,6 @@ def merge_methods_into_skeleton(skeleton: str, class_name: str, method_to_code: 
     if normalize_code_for_syntax is not None:
         formatted = normalize_code_for_syntax(merged, use_autopep8=True)  # type: ignore
         if isinstance(formatted, str) and formatted:
-            # Preserve trailing newline
             if not formatted.endswith("\n"):
                 formatted = formatted + "\n"
             return formatted
