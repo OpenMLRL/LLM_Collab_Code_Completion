@@ -94,6 +94,19 @@ def _as_bool(x: Any, default: bool) -> bool:
     return bool(x)
 
 
+def _as_device_spec(x: Any) -> Any:
+    if x is None:
+        return None
+    if isinstance(x, str):
+        s = x.strip()
+        if s.lower() in ("none", "null", ""):
+            return None
+        return s
+    if isinstance(x, (list, tuple)):
+        return [str(v) for v in x]
+    return str(x)
+
+
 def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
     tr = cfg.get("magrpo", {})
     lr_val = tr.get("agent_learning_rate", 3e-5)
@@ -113,6 +126,8 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
     candidate.update(
         {
             "num_agents": _as_int(tr.get("num_agents", 1), 1),
+            "parallel_mode": str(tr.get("parallel_mode", "auto")).strip().lower(),
+            "agent_devices": _as_device_spec(tr.get("agent_devices", None)),
             "discount": _as_float(tr.get("discount", 0.9), 0.9),
             "joint_mode": str(tr.get("joint_mode", "aligned")),
         }

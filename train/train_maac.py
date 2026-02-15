@@ -180,6 +180,19 @@ def _as_bool(x: Any, default: bool) -> bool:
     return bool(default)
 
 
+def _as_device_spec(x: Any) -> Any:
+    if x is None:
+        return None
+    if isinstance(x, str):
+        s = x.strip()
+        if s.lower() in ("none", "null", ""):
+            return None
+        return s
+    if isinstance(x, (list, tuple)):
+        return [str(v) for v in x]
+    return str(x)
+
+
 def _map_dtype(x: Any) -> Any:
     if isinstance(x, torch.dtype):
         return x
@@ -236,6 +249,9 @@ def _build_maac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> MAACC
         "num_agents": _as_int(tr.get("num_agents", 2), 2),
         "num_generations": _as_int(tr.get("num_generations", 1), 1),
         "discount": _as_float(tr.get("discount", 0.9), 0.9),
+        "parallel_mode": str(tr.get("parallel_mode", "auto")).strip().lower(),
+        "agent_devices": _as_device_spec(tr.get("agent_devices", None)),
+        "critic_devices": _as_device_spec(tr.get("critic_devices", None)),
         "critic_type": critic_type,
         "early_termination_threshold": _as_opt_float(
             tr.get("early_termination_threshold", None), None
