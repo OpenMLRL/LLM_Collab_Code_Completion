@@ -247,7 +247,7 @@ def _build_iac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> IACCon
         "num_agents": _as_int(tr.get("num_agents", 2), 2),
         "num_generations": _as_int(tr.get("num_generations", 1), 1),
         "use_separate_critic": use_separate_critic,
-        "parallel_mode": str(tr.get("parallel_mode", "auto")).strip().lower(),
+        "parallel_training": str(tr.get("parallel_training", "auto")).strip().lower(),
         "agent_devices": _as_device_spec(tr.get("agent_devices", None)),
         "critic_devices": _as_device_spec(tr.get("critic_devices", None)),
         "critic_value_head_hidden_dim": _as_opt_int(

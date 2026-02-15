@@ -126,7 +126,7 @@ def get_trainer_args(cfg: Dict[str, Any]) -> MAGRPOConfig:
     candidate.update(
         {
             "num_agents": _as_int(tr.get("num_agents", 1), 1),
-            "parallel_mode": str(tr.get("parallel_mode", "auto")).strip().lower(),
+            "parallel_training": str(tr.get("parallel_training", "auto")).strip().lower(),
             "agent_devices": _as_device_spec(tr.get("agent_devices", None)),
             "discount": _as_float(tr.get("discount", 0.9), 0.9),
             "joint_mode": str(tr.get("joint_mode", "aligned")),

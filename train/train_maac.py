@@ -249,7 +249,7 @@ def _build_maac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> MAACC
         "num_agents": _as_int(tr.get("num_agents", 2), 2),
         "num_generations": _as_int(tr.get("num_generations", 1), 1),
         "discount": _as_float(tr.get("discount", 0.9), 0.9),
-        "parallel_mode": str(tr.get("parallel_mode", "auto")).strip().lower(),
+        "parallel_training": str(tr.get("parallel_training", "auto")).strip().lower(),
         "agent_devices": _as_device_spec(tr.get("agent_devices", None)),
         "critic_devices": _as_device_spec(tr.get("critic_devices", None)),
         "critic_type": critic_type,
