@@ -20,9 +20,9 @@ dataset:
   eval_split: test[66:82]
 
 output:
-  base_dir: output
+  base_dir: output_magrpo_classeval
   save_final_model: false
-  save_path: output/final_model
+  save_path: output_magrpo_classeval
   verbose: false
 
 external:
@@ -58,5 +58,5 @@ wandb:
   project: classeval_dev
   entity: null
   name: codecompletion_classeval_magrpo
-  dir: output
+  dir: output_magrpo_classeval
   tags: ["magrpo", "classeval", "code-completion", "turns_2"]
