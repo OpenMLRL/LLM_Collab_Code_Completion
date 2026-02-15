@@ -27,7 +27,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
 import torch  # type: ignore
 
 from comlrl.trainers.reinforce import MAGRPOTrainer  # type: ignore
-from LLM_Collab_Code_Completion.utils.trainer_args import get_trainer_args
+from LLM_Collab_Code_Completion.utils.trainer_args import (
+    get_trainer_args,
+    get_agent_sampling_config,
+)
 
 from LLM_Collab_Code_Completion.utils.data import (
     extract_class_name,
@@ -257,7 +260,8 @@ def main():
 
     strategy = get_strategy(num_agents=num_agents, seed=seed)
 
-    magrpo_args = get_trainer_args(cfg)
+    sampling_cfg = get_agent_sampling_config(cfg)
+    magrpo_args = get_trainer_args(cfg, sampling_cfg=sampling_cfg)
     formatters = build_agent_formatters(strategy)
     reward_func = get_reward_function(strategy=strategy, num_agents=num_agents)
 

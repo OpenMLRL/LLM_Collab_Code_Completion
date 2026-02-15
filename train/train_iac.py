@@ -193,6 +193,42 @@ def _as_device_spec(x: Any) -> Any:
     return str(x)
 
 
+def _read_sampling_config(model_cfg: Dict[str, Any], *, section: str = "agent_model") -> Dict[str, Any]:
+    if not isinstance(model_cfg, dict):
+        raise ValueError(f"{section} must be a mapping.")
+    missing = [key for key in ("temperature", "top_p", "top_k") if key not in model_cfg]
+    if missing:
+        raise ValueError(
+            f"{section} is missing required sampling fields: {', '.join(missing)}."
+        )
+
+    def _require_float(key: str) -> float:
+        value = model_cfg.get(key)
+        if value is None or isinstance(value, bool):
+            raise ValueError(f"{section}.{key} must be provided as a float.")
+        try:
+            return float(value)
+        except Exception as exc:
+            raise ValueError(f"{section}.{key} must be a float, got {value!r}.") from exc
+
+    def _parse_top_k() -> Optional[int]:
+        value = model_cfg.get("top_k")
+        if value is None:
+            return None
+        if isinstance(value, str) and value.strip().lower() in ("none", "null", ""):
+            return None
+        try:
+            return int(float(value))
+        except Exception as exc:
+            raise ValueError(f"{section}.top_k must be an integer or null, got {value!r}.") from exc
+
+    return {
+        "temperature": _require_float("temperature"),
+        "top_p": _require_float("top_p"),
+        "top_k": _parse_top_k(),
+    }
+
+
 def _map_dtype(x: Any) -> Any:
     if isinstance(x, torch.dtype):
         return x
@@ -221,7 +257,7 @@ def _filter_config(candidate: Dict[str, Any], cfg_cls: Any) -> Dict[str, Any]:
     return {k: v for k, v in candidate.items() if k in params}
 
 
-def _build_iac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> IACConfig:
+def _build_iac_args(cfg: Dict[str, Any], *, sampling_cfg: Dict[str, Any]) -> IACConfig:
     tr = cfg.get("iac") or {}
     if not isinstance(tr, dict):
         tr = {}
@@ -241,9 +277,9 @@ def _build_iac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> IACCon
         "value_clip_range": _as_opt_float(tr.get("value_clip_range", 0.2), 0.2),
         "advantage_normalization": _as_bool(adv_norm, True),
         "max_new_tokens": _as_int(tr.get("max_new_tokens", 256), 256),
-        "temperature": _as_float(tr.get("temperature", 0.6), 0.6),
-        "top_p": _as_float(tr.get("top_p", 0.6), 0.6),
-        "top_k": _as_opt_int(tr.get("top_k", None), None),
+        "temperature": sampling_cfg["temperature"],
+        "top_p": sampling_cfg["top_p"],
+        "top_k": sampling_cfg["top_k"],
         "num_agents": _as_int(tr.get("num_agents", 2), 2),
         "num_generations": _as_int(tr.get("num_generations", 1), 1),
         "use_separate_critic": use_separate_critic,
@@ -368,7 +404,8 @@ def main() -> int:
     if torch_dtype is not None:
         model_kwargs["torch_dtype"] = torch_dtype
 
-    iac_args = _build_iac_args(cfg, model_name=model_name)
+    sampling_cfg = _read_sampling_config(model_cfg, section="agent_model")
+    iac_args = _build_iac_args(cfg, sampling_cfg=sampling_cfg)
     num_agents = int(getattr(iac_args, "num_agents", 1))
     if agent_names is not None:
         if not isinstance(agent_names, (list, tuple)) or not all(
