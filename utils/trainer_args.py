@@ -148,6 +148,7 @@ def get_agent_sampling_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 def get_trainer_args(cfg: Dict[str, Any], *, sampling_cfg: Dict[str, Any]) -> MAGRPOConfig:
     tr = cfg.get("magrpo", {})
+    ext = cfg.get("external", {})
     lr_val = tr.get("agent_learning_rate", 1e-5)
 
     candidate = {
@@ -183,7 +184,9 @@ def get_trainer_args(cfg: Dict[str, Any], *, sampling_cfg: Dict[str, Any]) -> MA
             "eval_interval": _as_int(tr.get("eval_interval", 10), 10),
             "eval_num_samples": _as_int(tr.get("eval_num_samples", 4), 4),
             "eval_batch_size": _as_int(tr.get("eval_batch_size", 1), 1),
-            "external_prompt_passthrough": True,
+            "external_prompt_passthrough": _as_bool(
+                ext.get("external_prompt_passthrough", False), False
+            ),
         }
     )
 

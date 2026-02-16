@@ -33,6 +33,7 @@ external:
   mode: code_feedback
   original_prompt: true
   previous_response: true
+  external_prompt_passthrough: false
 
 maac:
   parallel_training: none

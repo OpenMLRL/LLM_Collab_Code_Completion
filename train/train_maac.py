@@ -261,6 +261,9 @@ def _build_maac_args(cfg: Dict[str, Any], *, sampling_cfg: Dict[str, Any]) -> MA
     tr = cfg.get("maac") or {}
     if not isinstance(tr, dict):
         tr = {}
+    ext = cfg.get("external") or {}
+    if not isinstance(ext, dict):
+        ext = {}
     output_cfg = cfg.get("output", {}) or {}
 
     adv_norm = tr.get("advantage_normalization", tr.get("normalize_advantage", True))
@@ -289,6 +292,9 @@ def _build_maac_args(cfg: Dict[str, Any], *, sampling_cfg: Dict[str, Any]) -> MA
         "agent_devices": _as_device_spec(tr.get("agent_devices", ["cuda:0"])),
         "critic_devices": _as_device_spec(tr.get("critic_devices", ["cuda:0"])),
         "critic_type": critic_type,
+        "external_prompt_passthrough": _as_bool(
+            ext.get("external_prompt_passthrough", False), False
+        ),
         "early_termination_threshold": _as_opt_float(
             tr.get("early_termination_threshold", -0.2), -0.2
         ),

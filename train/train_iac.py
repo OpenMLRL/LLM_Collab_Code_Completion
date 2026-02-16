@@ -261,6 +261,9 @@ def _build_iac_args(cfg: Dict[str, Any], *, sampling_cfg: Dict[str, Any]) -> IAC
     tr = cfg.get("iac") or {}
     if not isinstance(tr, dict):
         tr = {}
+    ext = cfg.get("external") or {}
+    if not isinstance(ext, dict):
+        ext = {}
     use_separate_critic = _as_bool(tr.get("use_separate_critic", True), True)
 
     adv_norm = tr.get("advantage_normalization", tr.get("normalize_advantage", True))
@@ -291,6 +294,9 @@ def _build_iac_args(cfg: Dict[str, Any], *, sampling_cfg: Dict[str, Any]) -> IAC
         ),
         "value_head_hidden_dim": _as_opt_int(tr.get("value_head_hidden_dim", None), None),
         "discount": _as_float(tr.get("discount", 0.9), 0.9),
+        "external_prompt_passthrough": _as_bool(
+            ext.get("external_prompt_passthrough", False), False
+        ),
         "early_termination_threshold": _as_opt_float(
             tr.get("early_termination_threshold", -0.2), -0.2
         ),
