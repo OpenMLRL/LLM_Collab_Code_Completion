@@ -35,7 +35,7 @@ external:
   previous_response: true
 
 iac:
-  parallel_training: auto
+  parallel_training: mp
   num_agents: 2
   num_turns: 2
   num_train_epochs: 40
