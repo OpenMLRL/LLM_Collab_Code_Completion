@@ -266,17 +266,17 @@ def _build_iac_args(cfg: Dict[str, Any], *, sampling_cfg: Dict[str, Any]) -> IAC
     adv_norm = tr.get("advantage_normalization", tr.get("normalize_advantage", True))
 
     candidate = {
-        "num_turns": _as_int(tr.get("num_turns", 1), 1),
+        "num_turns": _as_int(tr.get("num_turns", 2), 2),
         "num_train_epochs": _as_int(tr.get("num_train_epochs", 40), 40),
         "agent_learning_rate": _as_float(tr.get("agent_learning_rate", 5e-6), 5e-6),
         "critic_learning_rate": _as_opt_float(
             tr.get("critic_learning_rate", 5e-6), 5e-6
         ),
-        "rollout_buffer_size": _as_int(tr.get("rollout_buffer_size", 8), 8),
+        "rollout_buffer_size": _as_int(tr.get("rollout_buffer_size", 2), 2),
         "value_loss_coef": _as_float(tr.get("value_loss_coef", 0.6), 0.6),
         "value_clip_range": _as_opt_float(tr.get("value_clip_range", 0.2), 0.2),
         "advantage_normalization": _as_bool(adv_norm, True),
-        "max_new_tokens": _as_int(tr.get("max_new_tokens", 256), 256),
+        "max_new_tokens": _as_int(tr.get("max_new_tokens", 600), 600),
         "temperature": sampling_cfg["temperature"],
         "top_p": sampling_cfg["top_p"],
         "top_k": sampling_cfg["top_k"],
@@ -284,17 +284,17 @@ def _build_iac_args(cfg: Dict[str, Any], *, sampling_cfg: Dict[str, Any]) -> IAC
         "num_generations": _as_int(tr.get("num_generations", 1), 1),
         "use_separate_critic": use_separate_critic,
         "parallel_training": str(tr.get("parallel_training", "none")).strip().lower(),
-        "agent_devices": _as_device_spec(tr.get("agent_devices", None)),
-        "critic_devices": _as_device_spec(tr.get("critic_devices", None)),
+        "agent_devices": _as_device_spec(tr.get("agent_devices", ["cuda:0"])),
+        "critic_devices": _as_device_spec(tr.get("critic_devices", ["cuda:0"])),
         "critic_value_head_hidden_dim": _as_opt_int(
             tr.get("critic_value_head_hidden_dim", None), None
         ),
         "value_head_hidden_dim": _as_opt_int(tr.get("value_head_hidden_dim", None), None),
         "discount": _as_float(tr.get("discount", 0.9), 0.9),
         "early_termination_threshold": _as_opt_float(
-            tr.get("early_termination_threshold", None), None
+            tr.get("early_termination_threshold", -0.2), -0.2
         ),
-        "eval_interval": _as_int(tr.get("eval_interval", 16), 16),
+        "eval_interval": _as_int(tr.get("eval_interval", 20), 20),
         "eval_num_samples": _as_int(tr.get("eval_num_samples", 4), 4),
         "eval_batch_size": _as_int(tr.get("eval_batch_size", 1), 1),
         "logging_steps": _as_int(tr.get("logging_steps", 1), 1),
@@ -388,7 +388,7 @@ def main() -> int:
     if tmp_base:
         os.environ["CLASSEVAL_TMP_BASE"] = str(tmp_base)
 
-    model_name = str(model_cfg.get("name", "Qwen/Qwen2.5-Coder-7B")).strip()
+    model_name = str(model_cfg.get("name", "Qwen/Qwen3-4B-Instruct-2507")).strip()
     agent_names = cfg.get("agents")
     model_kwargs: Dict[str, Any] = {}
 

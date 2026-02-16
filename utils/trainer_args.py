@@ -148,40 +148,39 @@ def get_agent_sampling_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 def get_trainer_args(cfg: Dict[str, Any], *, sampling_cfg: Dict[str, Any]) -> MAGRPOConfig:
     tr = cfg.get("magrpo", {})
-    lr_val = tr.get("agent_learning_rate", 3e-5)
+    lr_val = tr.get("agent_learning_rate", 1e-5)
 
     candidate = {
-        "num_turns": _as_int(tr.get("num_turns", 1), 1),
-        "num_train_epochs": _as_int(tr.get("num_train_epochs", 3), 3),
-        "agent_learning_rate": _as_float(lr_val, 3e-5),
-        "logging_steps": _as_int(tr.get("logging_steps", 50), 50),
-        "num_generations": _as_int(tr.get("num_generations", 4), 4),
-        "max_new_tokens": _as_int(tr.get("max_new_tokens", 512), 512),
-        "temperature": _as_float(sampling_cfg.get("temperature"), 0.2),
-        "top_p": _as_float(sampling_cfg.get("top_p"), 0.95),
+        "num_turns": _as_int(tr.get("num_turns", 2), 2),
+        "num_train_epochs": _as_int(tr.get("num_train_epochs", 13), 13),
+        "agent_learning_rate": _as_float(lr_val, 1e-5),
+        "logging_steps": _as_int(tr.get("logging_steps", 1), 1),
+        "num_generations": _as_int(tr.get("num_generations", 2), 2),
+        "max_new_tokens": _as_int(tr.get("max_new_tokens", 600), 600),
+        "temperature": _as_float(sampling_cfg.get("temperature"), 0.6),
+        "top_p": _as_float(sampling_cfg.get("top_p"), 0.6),
         "top_k": _as_opt_int(sampling_cfg.get("top_k"), None),
     }
     candidate.update(
         {
-            "num_agents": _as_int(tr.get("num_agents", 1), 1),
+            "num_agents": _as_int(tr.get("num_agents", 2), 2),
             "parallel_training": str(tr.get("parallel_training", "none")).strip().lower(),
-            "agent_devices": _as_device_spec(tr.get("agent_devices", None)),
+            "agent_devices": _as_device_spec(tr.get("agent_devices", ["cuda:0"])),
             "discount": _as_float(tr.get("discount", 0.9), 0.9),
             "joint_mode": str(tr.get("joint_mode", "aligned")),
+            "early_termination_threshold": _as_opt_float(
+                tr.get("early_termination_threshold", -0.2), -0.2
+            ),
         }
     )
-    if "early_termination_threshold" in tr:
-        candidate["early_termination_threshold"] = _as_opt_float(
-            tr.get("early_termination_threshold", None), None
-        )
     candidate.update(
         {
-            "rollout_buffer_size": _as_int(tr.get("rollout_buffer_size", 2), 2),
-            "train_batch_size": _as_opt_int(tr.get("train_batch_size", None), None),
+            "rollout_buffer_size": _as_int(tr.get("rollout_buffer_size", 1), 1),
+            "train_batch_size": _as_opt_int(tr.get("train_batch_size", 1), 1),
             "advantage_normalization": _as_bool(
                 tr.get("advantage_normalization", True), True
             ),
-            "eval_interval": _as_int(tr.get("eval_interval", 16), 16),
+            "eval_interval": _as_int(tr.get("eval_interval", 10), 10),
             "eval_num_samples": _as_int(tr.get("eval_num_samples", 4), 4),
             "eval_batch_size": _as_int(tr.get("eval_batch_size", 1), 1),
             "external_prompt_passthrough": True,

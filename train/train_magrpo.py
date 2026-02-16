@@ -157,7 +157,7 @@ def main():
     if isinstance(eval_split, str):
         eval_split = eval_split.strip() or None
 
-    num_agents = int(magrpo_cfg.get("num_agents", 1))
+    num_agents = int(magrpo_cfg.get("num_agents", 2))
 
     if not eval_split:
         print("dataset.eval_split is required.")
@@ -194,7 +194,7 @@ def main():
         tmp_base = None
     if tmp_base:
         os.environ["CLASSEVAL_TMP_BASE"] = str(tmp_base)
-    model_name = model_cfg.get("name", "Qwen/Qwen2.5-3B")
+    model_name = model_cfg.get("name", "Qwen/Qwen3-4B-Instruct-2507")
     agent_names = cfg.get("agents")
     if agent_names is not None:
         if not isinstance(agent_names, (list, tuple)) or not all(
