@@ -35,7 +35,9 @@ external:
   previous_response: true
 
 maac:
-  parallel_training: mp
+  parallel_training: none
+  agent_devices: ["cuda:0"]
+  critic_devices: ["cuda:0"]
   num_agents: 2
   num_turns: 2
   critic_type: v

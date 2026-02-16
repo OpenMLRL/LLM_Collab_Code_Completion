@@ -164,7 +164,7 @@ def get_trainer_args(cfg: Dict[str, Any], *, sampling_cfg: Dict[str, Any]) -> MA
     candidate.update(
         {
             "num_agents": _as_int(tr.get("num_agents", 1), 1),
-            "parallel_training": str(tr.get("parallel_training", "mp")).strip().lower(),
+            "parallel_training": str(tr.get("parallel_training", "none")).strip().lower(),
             "agent_devices": _as_device_spec(tr.get("agent_devices", None)),
             "discount": _as_float(tr.get("discount", 0.9), 0.9),
             "joint_mode": str(tr.get("joint_mode", "aligned")),
