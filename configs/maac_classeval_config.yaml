@@ -3,16 +3,15 @@ agent_model:
   type: qwen
   temperature: 0.6
   top_p: 0.6
+  top_k: null
   max_length: 2048
   torch_dtype: bfloat16
 
 agents: null
 
 critic_model:
-  name: "Qwen/Qwen3-4B-Instruct-2507"
+  name: Qwen/Qwen3-4B-Instruct-2507
   type: qwen
-  temperature: 0.6
-  top_p: 0.6
   max_length: 2048
   torch_dtype: bfloat16
 
@@ -25,17 +24,23 @@ dataset:
   eval_split: test[66:82]
 
 output:
-  base_dir: output
-  save_final_model: false
-  save_path: output/final_model
+  base_dir: output_maac_classeval
   verbose: false
+  save_final_model: false
+  save_path: output_maac_classeval
 
 external:
   mode: code_feedback
   original_prompt: true
   previous_response: true
+  external_prompt_passthrough: false
 
 maac:
+  parallel_training: none
+  agent_devices:
+  - cuda:0
+  critic_devices:
+  - cuda:0
   num_agents: 2
   num_turns: 2
   critic_type: v
@@ -46,12 +51,9 @@ maac:
   rollout_buffer_size: 2
   train_batch_size: 2
   max_new_tokens: 600
-  temperature: 0.6
-  top_p: 0.6
-  top_k: null
-  num_generations: 1
   discount: 0.9
   early_termination_threshold: -0.2
+  num_generations: 1
   eval_interval: 20
   eval_num_samples: 2
   eval_batch_size: 1
@@ -66,5 +68,9 @@ wandb:
   project: classeval_dev
   entity: null
   name: codecompletion_classeval_maac
-  dir: output
-  tags: ["maac", "classeval", "code-completion", "turns_2"]
+  dir: output_maac_classeval
+  tags:
+  - maac
+  - classeval
+  - code-completion
+  - turns_2

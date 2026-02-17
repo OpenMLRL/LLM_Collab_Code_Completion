@@ -18,13 +18,19 @@ except Exception as e:  # pragma: no cover
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(REPO_ROOT))
 sys.path.insert(0, REPO_ROOT)
+COMLRL_ROOT = os.path.join(os.path.dirname(REPO_ROOT), "CoMLRL")
+if COMLRL_ROOT not in sys.path:
+    sys.path.insert(0, COMLRL_ROOT)
 
 from datasets import load_dataset  # type: ignore
-from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
+from transformers import AutoTokenizer  # type: ignore
 import torch  # type: ignore
 
 from comlrl.trainers.reinforce import MAGRPOTrainer  # type: ignore
-from LLM_Collab_Code_Completion.utils.trainer_args import get_trainer_args
+from LLM_Collab_Code_Completion.utils.trainer_args import (
+    get_trainer_args,
+    get_agent_sampling_config,
+)
 
 from LLM_Collab_Code_Completion.utils.data import (
     extract_class_name,
@@ -151,7 +157,7 @@ def main():
     if isinstance(eval_split, str):
         eval_split = eval_split.strip() or None
 
-    num_agents = int(magrpo_cfg.get("num_agents", 1))
+    num_agents = int(magrpo_cfg.get("num_agents", 2))
 
     if not eval_split:
         print("dataset.eval_split is required.")
@@ -188,7 +194,7 @@ def main():
         tmp_base = None
     if tmp_base:
         os.environ["CLASSEVAL_TMP_BASE"] = str(tmp_base)
-    model_name = model_cfg.get("name", "Qwen/Qwen2.5-3B")
+    model_name = model_cfg.get("name", "Qwen/Qwen3-4B-Instruct-2507")
     agent_names = cfg.get("agents")
     if agent_names is not None:
         if not isinstance(agent_names, (list, tuple)) or not all(
@@ -196,8 +202,6 @@ def main():
         ):
             raise ValueError("agents must be a list of model names.")
         agent_names = [str(x) for x in agent_names]
-    model_kwargs: Dict[str, Any] = {}
-
     dtype_cfg = (
         model_cfg.get("dtype")
         or model_cfg.get("torch_dtype")
@@ -227,9 +231,6 @@ def main():
         except Exception:
             torch_dtype = None
 
-    if torch_dtype is not None:
-        model_kwargs["torch_dtype"] = torch_dtype
-
     tokenizer_source = agent_names[0] if agent_names else model_name
     if not tokenizer_source:
         raise ValueError("agent_model.name or agents must be provided.")
@@ -242,19 +243,10 @@ def main():
             tok.pad_token = tok.eos_token
     tokenizer = tokenizers[0]
 
-    agents = []
-    if agent_names:
-        for name in agent_names:
-            agent = AutoModelForCausalLM.from_pretrained(name, **model_kwargs)
-            agents.append(agent)
-    else:
-        for _ in range(num_agents):
-            agent = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
-            agents.append(agent)
-
     strategy = get_strategy(num_agents=num_agents, seed=seed)
 
-    magrpo_args = get_trainer_args(cfg)
+    sampling_cfg = get_agent_sampling_config(cfg)
+    magrpo_args = get_trainer_args(cfg, sampling_cfg=sampling_cfg)
     formatters = build_agent_formatters(strategy)
     reward_func = get_reward_function(strategy=strategy, num_agents=num_agents)
 
@@ -335,8 +327,12 @@ def main():
 
     trainer_kwargs = {
         "agent_model": model_name or None,
-        "agents": agents,
+        "agents": agent_names,
         "num_agents": num_agents,
+        "model_config": {
+            "torch_dtype": torch_dtype,
+            "special_tokens": model_cfg.get("special_tokens", {}),
+        },
         "reward_func": reward_func,
         "formatters": formatters,
         "args": magrpo_args,

@@ -21,6 +21,9 @@ except Exception as e:  # pragma: no cover
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(REPO_ROOT))
 sys.path.insert(0, REPO_ROOT)
+COMLRL_ROOT = os.path.join(os.path.dirname(REPO_ROOT), "CoMLRL")
+if COMLRL_ROOT not in sys.path:
+    sys.path.insert(0, COMLRL_ROOT)
 
 from datasets import load_dataset  # type: ignore
 from transformers import AutoTokenizer  # type: ignore
@@ -177,6 +180,55 @@ def _as_bool(x: Any, default: bool) -> bool:
     return bool(default)
 
 
+def _as_device_spec(x: Any) -> Any:
+    if x is None:
+        return None
+    if isinstance(x, str):
+        s = x.strip()
+        if s.lower() in ("none", "null", ""):
+            return None
+        return s
+    if isinstance(x, (list, tuple)):
+        return [str(v) for v in x]
+    return str(x)
+
+
+def _read_sampling_config(model_cfg: Dict[str, Any], *, section: str = "agent_model") -> Dict[str, Any]:
+    if not isinstance(model_cfg, dict):
+        raise ValueError(f"{section} must be a mapping.")
+    missing = [key for key in ("temperature", "top_p", "top_k") if key not in model_cfg]
+    if missing:
+        raise ValueError(
+            f"{section} is missing required sampling fields: {', '.join(missing)}."
+        )
+
+    def _require_float(key: str) -> float:
+        value = model_cfg.get(key)
+        if value is None or isinstance(value, bool):
+            raise ValueError(f"{section}.{key} must be provided as a float.")
+        try:
+            return float(value)
+        except Exception as exc:
+            raise ValueError(f"{section}.{key} must be a float, got {value!r}.") from exc
+
+    def _parse_top_k() -> Optional[int]:
+        value = model_cfg.get("top_k")
+        if value is None:
+            return None
+        if isinstance(value, str) and value.strip().lower() in ("none", "null", ""):
+            return None
+        try:
+            return int(float(value))
+        except Exception as exc:
+            raise ValueError(f"{section}.top_k must be an integer or null, got {value!r}.") from exc
+
+    return {
+        "temperature": _require_float("temperature"),
+        "top_p": _require_float("top_p"),
+        "top_k": _parse_top_k(),
+    }
+
+
 def _map_dtype(x: Any) -> Any:
     if isinstance(x, torch.dtype):
         return x
@@ -205,10 +257,13 @@ def _filter_config(candidate: Dict[str, Any], cfg_cls: Any) -> Dict[str, Any]:
     return {k: v for k, v in candidate.items() if k in params}
 
 
-def _build_maac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> MAACConfig:
+def _build_maac_args(cfg: Dict[str, Any], *, sampling_cfg: Dict[str, Any]) -> MAACConfig:
     tr = cfg.get("maac") or {}
     if not isinstance(tr, dict):
         tr = {}
+    ext = cfg.get("external") or {}
+    if not isinstance(ext, dict):
+        ext = {}
     output_cfg = cfg.get("output", {}) or {}
 
     adv_norm = tr.get("advantage_normalization", tr.get("normalize_advantage", True))
@@ -217,28 +272,34 @@ def _build_maac_args(cfg: Dict[str, Any], *, model_name: Optional[str]) -> MAACC
         critic_type = str(critic_type)
 
     candidate = {
-        "num_turns": _as_int(tr.get("num_turns", 1), 1),
+        "num_turns": _as_int(tr.get("num_turns", 2), 2),
         "num_train_epochs": _as_int(tr.get("num_train_epochs", 40), 40),
         "agent_learning_rate": _as_float(tr.get("agent_learning_rate", 5e-6), 5e-6),
         "critic_learning_rate": _as_float(
             tr.get("critic_learning_rate", 5e-6), 5e-6
         ),
-        "rollout_buffer_size": _as_int(tr.get("rollout_buffer_size", 8), 8),
+        "rollout_buffer_size": _as_int(tr.get("rollout_buffer_size", 2), 2),
         "value_loss_coef": _as_float(tr.get("value_loss_coef", 0.6), 0.6),
         "advantage_normalization": _as_bool(adv_norm, True),
-        "max_new_tokens": _as_int(tr.get("max_new_tokens", 256), 256),
-        "temperature": _as_float(tr.get("temperature", 0.6), 0.6),
-        "top_p": _as_float(tr.get("top_p", 0.6), 0.6),
-        "top_k": _as_opt_int(tr.get("top_k", None), None),
+        "max_new_tokens": _as_int(tr.get("max_new_tokens", 600), 600),
+        "temperature": sampling_cfg["temperature"],
+        "top_p": sampling_cfg["top_p"],
+        "top_k": sampling_cfg["top_k"],
         "num_agents": _as_int(tr.get("num_agents", 2), 2),
         "num_generations": _as_int(tr.get("num_generations", 1), 1),
         "discount": _as_float(tr.get("discount", 0.9), 0.9),
+        "parallel_training": str(tr.get("parallel_training", "none")).strip().lower(),
+        "agent_devices": _as_device_spec(tr.get("agent_devices", ["cuda:0"])),
+        "critic_devices": _as_device_spec(tr.get("critic_devices", ["cuda:0"])),
         "critic_type": critic_type,
-        "early_termination_threshold": _as_opt_float(
-            tr.get("early_termination_threshold", None), None
+        "external_prompt_passthrough": _as_bool(
+            ext.get("external_prompt_passthrough", False), False
         ),
-        "eval_interval": _as_int(tr.get("eval_interval", 16), 16),
-        "eval_num_samples": _as_int(tr.get("eval_num_samples", 4), 4),
+        "early_termination_threshold": _as_opt_float(
+            tr.get("early_termination_threshold", -0.2), -0.2
+        ),
+        "eval_interval": _as_int(tr.get("eval_interval", 20), 20),
+        "eval_num_samples": _as_int(tr.get("eval_num_samples", 2), 2),
         "eval_batch_size": _as_int(tr.get("eval_batch_size", 1), 1),
         "logging_steps": _as_int(tr.get("logging_steps", 1), 1),
     }
@@ -333,7 +394,7 @@ def main() -> int:
     if tmp_base:
         os.environ["CLASSEVAL_TMP_BASE"] = str(tmp_base)
 
-    model_name = str(model_cfg.get("name", "Qwen/Qwen2.5-Coder-7B")).strip()
+    model_name = str(model_cfg.get("name", "Qwen/Qwen3-4B-Instruct-2507")).strip()
     agent_names = cfg.get("agents")
     model_kwargs: Dict[str, Any] = {}
 
@@ -349,7 +410,8 @@ def main() -> int:
     if torch_dtype is not None:
         model_kwargs["torch_dtype"] = torch_dtype
 
-    maac_args = _build_maac_args(cfg, model_name=model_name)
+    sampling_cfg = _read_sampling_config(model_cfg, section="agent_model")
+    maac_args = _build_maac_args(cfg, sampling_cfg=sampling_cfg)
     num_agents = int(getattr(maac_args, "num_agents", 1))
     if agent_names is not None:
         if not isinstance(agent_names, (list, tuple)) or not all(

@@ -45,9 +45,11 @@ Key sections in `configs/magrpo_classeval_config.yaml`:
   ClassEval sub-slices or local mirrors.
 - `external`: feedback configuration (use `code_feedback` for syntax/test diagnostics).
 - `magrpo`: forwarded to `comlrl.trainers.reinforce.MAGRPOTrainer`. Includes collaboration
-  (`num_agents`, param-count assignment), sampling settings (`num_generations`, `num_turns`,
-  temperature/top_p), rollout buffering (`rollout_buffer_size`), optimization
+  (`num_agents`, param-count assignment), rollout settings (`num_generations`, `num_turns`),
+  rollout buffering (`rollout_buffer_size`), optimization
   hyperparameters, and IO controls.
+- Sampling knobs (`temperature`, `top_p`, `top_k`) are configured in `agent_model` and passed
+  to trainer args at runtime.
 - `reward_processor`: optional post-processing for rewards (scale, shift).
 - `output`: persistence knobs (save final model, output paths, verbose debug prints).
 
